@@ -28,28 +28,37 @@ const cookieName = "__Host-drive"
 var operationPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{20,64}$`)
 
 type Site struct {
-	Store                                           *store.Store
-	Drive                                           *cloud.Native
-	Links                                           cloud.Links
-	Origin, PublicRoot, PrivateRoot, OpenListPrefix string
-	DownloadEnabled                                 bool
-	loginLimit                                      *rate.Limiter
+	Store                           *store.Store
+	Drive                           *cloud.Native
+	Links                           cloud.Links
+	Origin, PublicRoot, PrivateRoot string
+	Connection                      *cloud.Connection
+	Started                         time.Time
+	configurationLimit              *rate.Limiter
+	DownloadEnabled                 bool
+	loginLimit                      *rate.Limiter
 }
 
 func (s *Site) Routes() http.Handler {
 	s.loginLimit = rate.NewLimiter(rate.Every(2*time.Second), 5)
+	s.configurationLimit = rate.NewLimiter(rate.Every(5*time.Second), 2)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/session", s.auth(s.session))
+	mux.HandleFunc("GET /api/admin/status", s.admin(s.adminStatus))
+	mux.HandleFunc("GET /api/admin/users", s.admin(s.adminUsers))
+	mux.HandleFunc("POST /api/admin/users", s.admin(s.createUser))
+	mux.HandleFunc("PATCH /api/admin/users/{login}", s.admin(s.changeUser))
+	mux.HandleFunc("PUT /api/admin/openlist", s.admin(s.configureOpenList))
 	mux.HandleFunc("GET /api/files", s.auth(s.files))
 	mux.HandleFunc("GET /api/file", s.auth(s.file))
 	mux.HandleFunc("GET /api/tasks", s.auth(s.tasks))
 	mux.HandleFunc("POST /api/tasks", s.auth(s.start))
 	web, _ := fs.Sub(assets, "web")
 	mux.Handle("GET /{$}", http.FileServerFS(web))
-	for _, name := range []string{"style.css", "app.js"} {
+	for _, name := range []string{"style.css", "app.js", "admin.js"} {
 		mux.Handle("GET /"+name, http.FileServerFS(web))
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -154,7 +163,9 @@ func (s *Site) session(w http.ResponseWriter, r *http.Request, a store.Account) 
 	respond(w, 200, struct {
 		Login     string `json:"login"`
 		Downloads bool   `json:"downloads"`
-	}{a.Login, s.DownloadEnabled})
+		Role      string `json:"role"`
+		Setup     bool   `json:"setup"`
+	}{a.Login, s.DownloadEnabled && a.CanDownload(), a.Role, a.Role == store.Admin && s.Connection.Info().Mode == "unconfigured"})
 }
 
 func normalize(relative string) (string, error) {
@@ -275,7 +286,7 @@ func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
 			fileFailure(w, cloud.Missing)
 			return
 		}
-		providerPath := path.Join("/", s.OpenListPrefix, strings.TrimPrefix(absolute, s.PublicRoot))
+		providerPath := strings.TrimPrefix(absolute, s.PublicRoot)
 		target, err := s.Links.Resolve(ctx, providerPath, item, r.UserAgent())
 		if err != nil {
 			fileFailure(w, err)
@@ -306,6 +317,10 @@ func (s *Site) tasks(w http.ResponseWriter, r *http.Request, a store.Account) {
 }
 
 func (s *Site) start(w http.ResponseWriter, r *http.Request, a store.Account) {
+	if !a.CanDownload() {
+		problem(w, 403, "此账号仅可浏览和下载现有文件")
+		return
+	}
 	if !s.DownloadEnabled {
 		problem(w, 503, "云下载暂不可用")
 		return

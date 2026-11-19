@@ -52,7 +52,13 @@ type cachedPage struct {
 	checked time.Time
 }
 
+type LastRead struct {
+	Time time.Time `json:"time"`
+	OK   bool      `json:"ok"`
+}
+
 type Native struct {
+	last   LastRead
 	client *driver.Pan115Client
 	limit  *rate.Limiter
 	gate   chan struct{}
@@ -154,9 +160,13 @@ func (n *Native) List(ctx context.Context, directory string, offset int, refresh
 	}
 	id, err := n.dirID(ctx, directory)
 	if err != nil {
+		if errors.Is(err, Unavailable) {
+			n.recordDirectoryRead(false)
+		}
 		return Page{}, err
 	}
 	page, err := n.listID(ctx, id, offset)
+	n.recordDirectoryRead(err == nil)
 	if err != nil {
 		return Page{}, err
 	}
@@ -167,6 +177,18 @@ func (n *Native) List(ctx context.Context, directory string, offset int, refresh
 	n.cache[key] = cachedPage{page, time.Now()}
 	n.mu.Unlock()
 	return page, nil
+}
+
+func (n *Native) LastDirectoryRead() LastRead {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.last
+}
+
+func (n *Native) recordDirectoryRead(ok bool) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.last = LastRead{Time: time.Now(), OK: ok}
 }
 
 func (n *Native) Invalidate(directory string) {

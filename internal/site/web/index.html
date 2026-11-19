@@ -1,46 +1,215 @@
 <!doctype html>
 <html lang="zh-CN">
-<head>
- <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
- <title>CloudDrive · 文件与云下载</title>
- <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
-</head>
-<body>
- <main id="login" class="signin" hidden>
-  <form id="login-form" class="login-card">
-   <span class="logo" aria-hidden="true">D</span><h1>CloudDrive</h1>
-   <label for="login-name">账号</label><input id="login-name" autocomplete="username" required maxlength="64">
-   <label for="login-password">密码</label><input id="login-password" type="password" autocomplete="current-password" required maxlength="72">
-   <p id="login-error" class="error" role="alert"></p><button class="primary" type="submit">登录</button>
-  </form>
- </main>
- <div id="workspace" class="workspace" hidden>
-  <aside class="sidebar">
-   <a href="/" class="brand"><span class="logo" aria-hidden="true">D</span><strong>CloudDrive</strong></a>
-   <nav aria-label="网盘导航">
-    <button id="nav-public" type="button" aria-pressed="true"><span aria-hidden="true">▤</span> 全部文件</button>
-    <button id="nav-private" type="button" aria-pressed="false"><span aria-hidden="true">▣</span> 私人空间</button>
-    <button id="nav-tasks" type="button" aria-pressed="false"><span aria-hidden="true">↓</span> 云下载</button>
-   </nav>
-   <div class="account"><span id="account"></span><button id="logout" type="button">退出</button></div>
-  </aside>
-  <main class="main">
-   <header class="toolbar"><h1 id="title">全部文件</h1><button id="new-task" class="primary" type="button">新建云下载</button></header>
-   <section id="files" aria-label="文件列表">
-    <div class="table-tools"><nav id="crumbs" aria-label="当前目录"></nav><button id="refresh" type="button">刷新</button></div>
-    <p id="files-status" class="status" role="status"></p>
-    <div class="table-scroll"><table><thead><tr><th>名称</th><th>大小</th><th>操作</th></tr></thead><tbody id="file-rows"></tbody></table></div>
-    <div class="pagination"><button id="prev" type="button" disabled>上一页</button><span id="page-number">第 1 页</span><button id="next" type="button" disabled>下一页</button></div>
-   </section>
-   <section id="tasks" aria-label="云下载任务" hidden>
-    <form id="task-form" class="task-compose"><label for="source">下载链接</label><textarea id="source" required maxlength="65536" rows="3" placeholder="粘贴磁力、HTTP、HTTPS 或 ED2K 链接"></textarea><div><button class="primary" id="submit" type="submit">开始下载</button></div></form>
-    <p id="task-status" class="status" role="status"></p>
-    <div class="table-tools"><h2>我的任务</h2><button id="refresh-tasks" type="button">刷新状态</button></div>
-    <ul id="task-rows" class="task-rows"></ul>
-   </section>
-  </main>
- </div>
- <dialog id="player"><header><strong id="player-name"></strong><button id="player-close" type="button">关闭</button></header><video id="video" controls playsinline preload="metadata"></video><p id="player-error" role="status"></p></dialog>
- <noscript>启用 JavaScript 后即可使用 CloudDrive。</noscript>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CloudDrive · 文件与云下载</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+    <script src="/admin.js" defer></script>
+  </head>
+  <body>
+    <main id="login" class="signin" hidden>
+      <form id="login-form" class="login-card">
+        <span class="logo" aria-hidden="true">D</span>
+        <h1>CloudDrive</h1>
+        <label for="login-name">账号</label
+        ><input
+          id="login-name"
+          autocomplete="username"
+          required
+          maxlength="64"
+        />
+        <label for="login-password">密码</label
+        ><input
+          id="login-password"
+          type="password"
+          autocomplete="current-password"
+          required
+          maxlength="72"
+        />
+        <p id="login-error" class="error" role="alert"></p>
+        <button class="primary" type="submit">登录</button>
+      </form>
+    </main>
+    <div id="workspace" class="workspace" hidden>
+      <aside class="sidebar">
+        <a href="/" class="brand"
+          ><span class="logo" aria-hidden="true">D</span
+          ><strong>CloudDrive</strong></a
+        >
+        <nav aria-label="网盘导航">
+          <button id="nav-public" type="button" aria-pressed="true">
+            <span aria-hidden="true">▤</span> 全部文件
+          </button>
+          <button id="nav-private" type="button" aria-pressed="false">
+            <span aria-hidden="true">▣</span> 私人空间
+          </button>
+          <button id="nav-tasks" type="button" aria-pressed="false">
+            <span aria-hidden="true">↓</span> 云下载
+          </button>
+          <button id="nav-admin" type="button" aria-pressed="false" hidden>
+            <span aria-hidden="true">⚙</span> 管理
+          </button>
+        </nav>
+        <div class="account">
+          <span id="account"></span
+          ><button id="logout" type="button">退出</button>
+        </div>
+      </aside>
+      <main class="main">
+        <header class="toolbar">
+          <h1 id="title">全部文件</h1>
+          <button id="new-task" class="primary" type="button">
+            新建云下载
+          </button>
+        </header>
+        <section id="files" aria-label="文件列表">
+          <div class="table-tools">
+            <nav id="crumbs" aria-label="当前目录"></nav>
+            <button id="refresh" type="button">刷新</button>
+          </div>
+          <p id="files-status" class="status" role="status"></p>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>大小</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="file-rows"></tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <button id="prev" type="button" disabled>上一页</button
+            ><span id="page-number">第 1 页</span
+            ><button id="next" type="button" disabled>下一页</button>
+          </div>
+        </section>
+        <section id="tasks" aria-label="云下载任务" hidden>
+          <form id="task-form" class="task-compose">
+            <label for="source">下载链接</label
+            ><textarea
+              id="source"
+              required
+              maxlength="65536"
+              rows="3"
+              placeholder="粘贴磁力、HTTP、HTTPS 或 ED2K 链接"
+            ></textarea>
+            <div>
+              <button class="primary" id="submit" type="submit">
+                开始下载
+              </button>
+            </div>
+          </form>
+          <p id="task-status" class="status" role="status"></p>
+          <div class="table-tools">
+            <h2>我的任务</h2>
+            <button id="refresh-tasks" type="button">刷新状态</button>
+          </div>
+          <ul id="task-rows" class="task-rows"></ul>
+        </section>
+        <section id="admin" aria-label="网站管理" hidden>
+          <div class="table-tools">
+            <h2>网站与服务器</h2>
+            <button id="refresh-admin" type="button">刷新管理状态</button>
+          </div>
+          <dl id="status-grid" class="status-grid"></dl>
+          <div class="admin-panel">
+            <h2>OpenList 接入</h2>
+            <p id="connection-state" class="status"></p>
+            <form id="openlist-form" class="admin-form">
+              <label
+                >OpenList 账号<input
+                  id="openlist-user"
+                  autocomplete="off"
+                  maxlength="128"
+                  required
+              /></label>
+              <label
+                >OpenList 密码<input
+                  id="openlist-password"
+                  type="password"
+                  autocomplete="off"
+                  maxlength="1024"
+                  required
+              /></label>
+              <label
+                >文件根目录<input
+                  id="openlist-root"
+                  placeholder="/"
+                  maxlength="2048"
+              /></label>
+              <button
+                id="openlist-verify"
+                class="primary"
+                type="submit"
+                disabled
+              >
+                验证并保存
+              </button>
+            </form>
+            <p id="openlist-message" class="status" role="status"></p>
+          </div>
+          <div class="admin-panel">
+            <h2>用户管理</h2>
+            <form id="new-user-form" class="admin-form">
+              <label
+                >新账号<input
+                  id="new-user-login"
+                  autocomplete="off"
+                  minlength="3"
+                  maxlength="64"
+                  required
+              /></label>
+              <label
+                >初始密码<input
+                  id="new-user-password"
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="12"
+                  maxlength="72"
+                  required
+              /></label>
+              <label
+                >权限<select id="new-user-role">
+                  <option value="member">可云下载</option>
+                  <option value="reader">只读</option>
+                  <option value="admin">管理员</option>
+                </select></label
+              >
+              <button id="create-user" class="primary" type="submit">
+                创建账号
+              </button>
+            </form>
+            <p id="manage-message" class="status" role="status"></p>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>账号</th>
+                    <th>权限</th>
+                    <th>启用</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="user-rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <dialog id="player">
+      <header>
+        <strong id="player-name"></strong
+        ><button id="player-close" type="button">关闭</button>
+      </header>
+      <video id="video" controls playsinline preload="metadata"></video>
+      <p id="player-error" role="status"></p>
+    </dialog>
+    <noscript>启用 JavaScript 后即可使用 CloudDrive。</noscript>
+  </body>
 </html>

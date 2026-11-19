@@ -28,6 +28,7 @@ type Store struct {
 type Account struct {
 	ID       string `json:"-"`
 	Login    string `json:"login"`
+	Role     string `json:"role"`
 	FolderID string `json:"-"`
 }
 
@@ -39,6 +40,11 @@ const schema = `
 CREATE TABLE IF NOT EXISTS drive_accounts (
   id text PRIMARY KEY, login text NOT NULL UNIQUE, password_hash bytea NOT NULL,
   folder_id text NOT NULL DEFAULT '', enabled boolean NOT NULL DEFAULT true);
+
+ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'member'
+  CHECK(role IN ('admin','member','reader'));
+ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+CREATE TABLE IF NOT EXISTS drive_settings(name text PRIMARY KEY,sealed bytea NOT NULL);
 CREATE TABLE IF NOT EXISTS drive_sessions (
   token_hash bytea PRIMARY KEY, account_id text NOT NULL REFERENCES drive_accounts(id) ON DELETE CASCADE,
   expires_at timestamptz NOT NULL);
@@ -113,7 +119,7 @@ func (s *Store) Account(ctx context.Context, token string) (Account, error) {
 		return account, Invalid
 	}
 	digest := sha256.Sum256([]byte(token))
-	err := s.db.QueryRow(ctx, `SELECT a.id,a.login,a.folder_id FROM drive_accounts a JOIN drive_sessions t ON a.id=t.account_id WHERE t.token_hash=$1 AND t.expires_at>now() AND a.enabled`, digest[:]).Scan(&account.ID, &account.Login, &account.FolderID)
+	err := s.db.QueryRow(ctx, `SELECT a.id,a.login,a.folder_id,a.role FROM drive_accounts a JOIN drive_sessions t ON a.id=t.account_id WHERE t.token_hash=$1 AND t.expires_at>now() AND a.enabled`, digest[:]).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role)
 	return account, err
 }
 
@@ -152,7 +158,7 @@ func scanJob(row pgx.Row) (Job, error) {
 
 func (s *Store) Submit(ctx context.Context, owner, key, identity, execution string) (Job, error) {
 	digest := sha256.Sum256([]byte(identity))
-	j, err := scanJob(s.db.QueryRow(ctx, `INSERT INTO drive_jobs(id,owner,operation_key,source_hash,source,status) VALUES($1,$2,$3,$4,$5,'QUEUED')
+	j, err := scanJob(s.db.QueryRow(ctx, `INSERT INTO drive_jobs(id,owner,operation_key,source_hash,source,status) SELECT $1,$2,$3,$4,$5,'QUEUED' FROM drive_accounts WHERE id=$2 AND enabled AND role IN ('admin','member')
 ON CONFLICT(owner,operation_key) DO UPDATE SET operation_key=EXCLUDED.operation_key WHERE drive_jobs.source_hash=EXCLUDED.source_hash RETURNING `+jobCols, Random()[:32], owner, key, digest[:], execution))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, Conflict
@@ -214,6 +220,6 @@ func (s *Store) Update(ctx context.Context, job, status, providerHash, name stri
 
 func (s *Store) User(ctx context.Context, id string) (Account, error) {
 	var account Account
-	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id FROM drive_accounts WHERE id=$1 AND enabled`, id).Scan(&account.ID, &account.Login, &account.FolderID)
+	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id,role FROM drive_accounts WHERE id=$1 AND enabled`, id).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role)
 	return account, err
 }

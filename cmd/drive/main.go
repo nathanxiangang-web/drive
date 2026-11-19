@@ -64,14 +64,19 @@ func run() error {
 	}
 	defer db.Close()
 	if len(os.Args) > 1 {
-		if len(os.Args) != 4 || os.Args[1] != "provision" {
-			return errors.New("usage: drive provision <login> <password-file>")
+		if len(os.Args) != 4 || (os.Args[1] != "provision" && os.Args[1] != "provision-admin") {
+			return errors.New("usage: drive provision-admin <login> <password-file>")
 		}
 		password, err := secret(os.Args[3])
 		if err != nil {
 			return err
 		}
-		if err := db.Provision(init, os.Args[2], []byte(password)); err != nil {
+		if os.Args[1] == "provision-admin" {
+			err = db.ProvisionAdmin(init, os.Args[2], password)
+		} else {
+			err = db.Provision(init, os.Args[2], []byte(password))
+		}
+		if err != nil {
 			return errors.New("drive account provisioning failed")
 		}
 		fmt.Println("Drive account provisioned")
@@ -82,11 +87,16 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		if err := db.Provision(init, variable("DRIVE_BOOTSTRAP_LOGIN", "nathan"), []byte(password)); err != nil {
+		if err := db.ProvisionAdmin(init, variable("DRIVE_BOOTSTRAP_LOGIN", "nathan"), password); err != nil {
 			return errors.New("bootstrap account provisioning failed")
 		}
 	}
 	base := variable("DRIVE_OPENLIST_BASE", "http://openlist:5244")
+	connection, err := cloud.OpenConnection(init, db, base, variable("DRIVE_OPENLIST_TOKEN_FILE", "/run/drive/openlist-token"),
+		variable("DRIVE_OPENLIST_PREFIX", "/"), variable("DRIVE_OPENLIST_KEY_FILE", "/run/drive/openlist-key"))
+	if err != nil {
+		return errors.New("OpenList connection settings could not be loaded")
+	}
 	origin := os.Getenv("DRIVE_ORIGIN")
 	u, err := url.Parse(origin)
 	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
@@ -110,7 +120,7 @@ func run() error {
 	if err != nil {
 		return errors.New("115 client configuration failed")
 	}
-	s := &site.Site{Store: db, Drive: native, Links: cloud.Links{Base: base, TokenFile: variable("DRIVE_OPENLIST_TOKEN_FILE", "/run/drive/openlist-token"), Hosts: hosts}, Origin: origin, PublicRoot: public, PrivateRoot: private, OpenListPrefix: os.Getenv("DRIVE_OPENLIST_PREFIX"), DownloadEnabled: variable("DRIVE_DOWNLOADS", "true") == "true"}
+	s := &site.Site{Store: db, Drive: native, Links: cloud.Links{Connection: connection, Hosts: hosts}, Connection: connection, Started: time.Now(), Origin: origin, PublicRoot: public, PrivateRoot: private, DownloadEnabled: variable("DRIVE_DOWNLOADS", "true") == "true"}
 	workerDone := make(chan struct{})
 	if s.DownloadEnabled {
 		if err := db.Recover(init); err != nil {

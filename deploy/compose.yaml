@@ -17,6 +17,7 @@ services:
     volumes:
       - ./private/database-url:/run/drive/database-url:ro
       - ./private/openlist-token:/run/drive/openlist-token:ro
+      - ./private/openlist-key:/run/drive/openlist-key:ro
       - ../private/115drive/config.toml:/run/drive/115.toml:ro
     networks:
       - data

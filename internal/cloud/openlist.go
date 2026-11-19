@@ -7,14 +7,14 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
+	"path"
 	"strings"
 	"time"
 )
 
 type Links struct {
-	Base, TokenFile string
-	Hosts           map[string]bool
+	Connection *Connection
+	Hosts      map[string]bool
 }
 
 var metadataHTTP = &http.Client{Timeout: 12 * time.Second,
@@ -24,17 +24,13 @@ func (a Links) Resolve(ctx context.Context, cloudPath string, expected Item, use
 	if len(userAgent) > 2048 || strings.ContainsAny(userAgent, "\x00\r\n") {
 		return "", Unavailable
 	}
-	credential, err := os.ReadFile(a.TokenFile)
-	if err != nil || len(credential) == 0 || len(credential) > 8192 {
+	token, root, err := a.Connection.Token(ctx)
+	if err != nil {
 		return "", Unavailable
 	}
-	defer clear(credential)
-	token := strings.TrimSpace(string(credential))
-	if token == "" || strings.ContainsAny(token, "\r\n\x00") {
-		return "", Unavailable
-	}
+	cloudPath = path.Join(root, cloudPath)
 	body, _ := json.Marshal(map[string]string{"path": cloudPath, "password": ""})
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.Base, "/")+"/api/fs/get", bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, a.Connection.base+"/api/fs/get", bytes.NewReader(body))
 	if err != nil {
 		return "", Unavailable
 	}
@@ -55,7 +51,11 @@ func (a Links) Resolve(ctx context.Context, cloudPath string, expected Item, use
 			Directory *bool  `json:"is_dir"`
 		} `json:"data"`
 	}
-	if response.StatusCode != http.StatusOK || json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&data) != nil || data.Code != 200 || data.Data.Name != expected.Name || data.Data.Size == nil || *data.Data.Size != expected.Size || data.Data.Directory == nil || *data.Data.Directory {
+	decodeErr := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&data)
+	if response.StatusCode == http.StatusUnauthorized || data.Code == 401 {
+		a.Connection.Expired(token)
+	}
+	if response.StatusCode != http.StatusOK || decodeErr != nil || data.Code != 200 || data.Data.Name != expected.Name || data.Data.Size == nil || *data.Data.Size != expected.Size || data.Data.Directory == nil || *data.Data.Directory {
 		return "", Unavailable
 	}
 	return checkedLink(data.Data.URL, a.Hosts)
