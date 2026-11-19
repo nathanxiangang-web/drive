@@ -68,6 +68,14 @@ func (s *Site) legacySpace(ctx context.Context, a store.Account) (string, error)
 	base := path.Join(s.LegacyRoot, a.FolderName())
 	page, err := s.Drive.List(ctx, base, 0, false)
 	if err != nil {
+		// A former provider path can vanish while the account still has old
+		// job rows. Check the parent before treating the whole space as broken.
+		if _, lookup := s.Drive.Child(ctx, s.PublicRoot, path.Base(s.LegacyRoot), false); errors.Is(lookup, cloud.Missing) {
+			return "", cloud.Missing
+		}
+		if _, lookup := s.Drive.Child(ctx, s.LegacyRoot, a.FolderName(), false); errors.Is(lookup, cloud.Missing) {
+			return "", cloud.Missing
+		}
 		return "", err
 	}
 	if page.CID != a.FolderID {
@@ -149,6 +157,9 @@ func (s *Site) privateRoot(ctx context.Context, a store.Account, offset int, ref
 		return entryPage{Items: []entry{}}, nil
 	}
 	base, err := s.legacySpace(ctx, a)
+	if errors.Is(err, cloud.Missing) {
+		return entryPage{Items: []entry{}}, nil
+	}
 	if err != nil {
 		return entryPage{}, err
 	}
@@ -163,11 +174,12 @@ func (s *Site) privateRoot(ctx context.Context, a store.Account, offset int, ref
 			return entryPage{}, err
 		}
 		page, err := s.Drive.List(ctx, path.Join(base, target.Name), pageOffset, refresh)
+		if errors.Is(err, cloud.Missing) || (err == nil && page.CID != target.ID) {
+			pageOffset = 0
+			continue
+		}
 		if err != nil {
 			return entryPage{}, err
-		}
-		if page.CID != target.ID {
-			return entryPage{}, cloud.Missing
 		}
 		projected := s.makePage("private", path.Join(legacyPrefix, target.Name), page)
 		if page.Next != 0 {
