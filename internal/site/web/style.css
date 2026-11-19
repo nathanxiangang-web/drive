@@ -219,6 +219,37 @@ textarea:focus-visible {
 .table-scroll {
   overflow: auto;
 }
+.file-search {
+  margin: 0 0 0.9rem;
+  max-width: 32rem;
+}
+.file-search label {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--muted);
+}
+.file-search div {
+  display: flex;
+  gap: 0.45rem;
+}
+.file-search input {
+  min-width: 0;
+  flex: 1;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.45rem 0.65rem;
+}
+.file-search button {
+  flex-shrink: 0;
+}
+.search-result-path {
+  display: block;
+  color: var(--muted);
+  font-size: 0.82rem;
+  margin: 0.25rem 0 0 0.3rem;
+}
 table {
   width: 100%;
   border-collapse: collapse;

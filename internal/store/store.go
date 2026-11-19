@@ -26,10 +26,11 @@ type Store struct {
 }
 
 type Account struct {
-	ID       string `json:"-"`
-	Login    string `json:"login"`
-	Role     string `json:"role"`
-	FolderID string `json:"-"`
+	ID            string `json:"-"`
+	Login         string `json:"login"`
+	Role          string `json:"role"`
+	FolderID      string `json:"-"`
+	NamedFolderID string `json:"-"`
 }
 
 func (a Account) FolderName() string { return "user-" + a.ID }
@@ -44,6 +45,8 @@ CREATE TABLE IF NOT EXISTS drive_accounts (
 ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'member'
   CHECK(role IN ('admin','member','reader'));
 ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS named_folder_id text NOT NULL DEFAULT '';
+CREATE UNIQUE INDEX IF NOT EXISTS drive_named_folder ON drive_accounts(named_folder_id) WHERE named_folder_id<>'';
 CREATE TABLE IF NOT EXISTS drive_settings(name text PRIMARY KEY,sealed bytea NOT NULL);
 CREATE TABLE IF NOT EXISTS drive_sessions (
   token_hash bytea PRIMARY KEY, account_id text NOT NULL REFERENCES drive_accounts(id) ON DELETE CASCADE,
@@ -54,6 +57,7 @@ CREATE TABLE IF NOT EXISTS drive_jobs (
   directory_id text NOT NULL DEFAULT '', name text NOT NULL DEFAULT '',
   status text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(owner,operation_key));
+ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS named_destination boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS drive_jobs_pending ON drive_jobs(status,created_at);
 CREATE INDEX IF NOT EXISTS drive_jobs_owner ON drive_jobs(owner,created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS drive_jobs_active_source ON drive_jobs(owner,source_hash)
@@ -127,7 +131,7 @@ func (s *Store) Account(ctx context.Context, token string) (Account, error) {
 		return account, Invalid
 	}
 	digest := sha256.Sum256([]byte(token))
-	err := s.db.QueryRow(ctx, `SELECT a.id,a.login,a.folder_id,a.role FROM drive_accounts a JOIN drive_sessions t ON a.id=t.account_id WHERE t.token_hash=$1 AND t.expires_at>now() AND a.enabled`, digest[:]).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role)
+	err := s.db.QueryRow(ctx, `SELECT a.id,a.login,a.folder_id,a.role,a.named_folder_id FROM drive_accounts a JOIN drive_sessions t ON a.id=t.account_id WHERE t.token_hash=$1 AND t.expires_at>now() AND a.enabled`, digest[:]).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID)
 	return account, err
 }
 
@@ -137,8 +141,8 @@ func (s *Store) Logout(ctx context.Context, token string) error {
 	return err
 }
 
-func (s *Store) BindFolder(ctx context.Context, owner, folder string) error {
-	tag, err := s.db.Exec(ctx, `UPDATE drive_accounts SET folder_id=$2 WHERE id=$1 AND (folder_id='' OR folder_id=$2)`, owner, folder)
+func (s *Store) BindNamedFolder(ctx context.Context, owner, login, folder string) error {
+	tag, err := s.db.Exec(ctx, `UPDATE drive_accounts SET named_folder_id=$3 WHERE id=$1 AND login=$2 AND enabled AND (named_folder_id='' OR named_folder_id=$3)`, owner, login, folder)
 	if err == nil && tag.RowsAffected() != 1 {
 		return Conflict
 	}
@@ -146,21 +150,22 @@ func (s *Store) BindFolder(ctx context.Context, owner, folder string) error {
 }
 
 type Job struct {
-	ID           string    `json:"id"`
-	Owner        string    `json:"-"`
-	Source       string    `json:"-"`
-	ProviderHash string    `json:"-"`
-	DirectoryID  string    `json:"-"`
-	Name         string    `json:"name"`
-	Status       string    `json:"status"`
-	Created      time.Time `json:"created"`
+	ID               string    `json:"id"`
+	Owner            string    `json:"-"`
+	Source           string    `json:"-"`
+	ProviderHash     string    `json:"-"`
+	DirectoryID      string    `json:"-"`
+	NamedDestination bool      `json:"-"`
+	Name             string    `json:"name"`
+	Status           string    `json:"status"`
+	Created          time.Time `json:"created"`
 }
 
-const jobCols = `id,owner,source,provider_hash,directory_id,name,status,created_at`
+const jobCols = `id,owner,source,provider_hash,directory_id,name,status,created_at,named_destination`
 
 func scanJob(row pgx.Row) (Job, error) {
 	var j Job
-	err := row.Scan(&j.ID, &j.Owner, &j.Source, &j.ProviderHash, &j.DirectoryID, &j.Name, &j.Status, &j.Created)
+	err := row.Scan(&j.ID, &j.Owner, &j.Source, &j.ProviderHash, &j.DirectoryID, &j.Name, &j.Status, &j.Created, &j.NamedDestination)
 	return j, err
 }
 
@@ -214,7 +219,7 @@ func (s *Store) Recover(ctx context.Context) error {
 }
 
 func (s *Store) RecordTarget(ctx context.Context, job, directory, expectedHash string) error {
-	tag, err := s.db.Exec(ctx, `UPDATE drive_jobs SET directory_id=$2,provider_hash=$3 WHERE id=$1 AND status='DISPATCHING'`, job, directory, expectedHash)
+	tag, err := s.db.Exec(ctx, `UPDATE drive_jobs SET directory_id=$2,provider_hash=$3,named_destination=true WHERE id=$1 AND status='DISPATCHING'`, job, directory, expectedHash)
 	if err == nil && tag.RowsAffected() != 1 {
 		return Conflict
 	}
@@ -228,6 +233,17 @@ func (s *Store) Update(ctx context.Context, job, status, providerHash, name stri
 
 func (s *Store) User(ctx context.Context, id string) (Account, error) {
 	var account Account
-	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id,role FROM drive_accounts WHERE id=$1 AND enabled`, id).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role)
+	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id,role,named_folder_id FROM drive_accounts WHERE id=$1 AND enabled`, id).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID)
 	return account, err
+}
+
+type LegacyTarget struct{ Name, ID string }
+
+func (s *Store) LegacyTargets(ctx context.Context, owner string) ([]LegacyTarget, error) {
+	rows, err := s.db.Query(ctx, `SELECT 'task-'||left(id,12), directory_id FROM drive_jobs
+WHERE owner=$1 AND NOT named_destination AND directory_id<>'' ORDER BY created_at,id`, owner)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[LegacyTarget])
 }

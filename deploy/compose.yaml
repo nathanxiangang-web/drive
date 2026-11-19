@@ -11,7 +11,7 @@ services:
     environment:
       DRIVE_ORIGIN: https://drive.netioi.com
       DRIVE_PUBLIC_ROOT: /CloudSite
-      DRIVE_PRIVATE_FOLDER: DriveSpaces
+      DRIVE_PRIVATE_FOLDER: DriveSpace
       DRIVE_OPENLIST_BASE: http://openlist:5244
       DRIVE_CDN_HOSTS: cdnfhnfile.115cdn.net
     volumes:

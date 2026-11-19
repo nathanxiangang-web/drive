@@ -114,8 +114,9 @@ func run() error {
 		return errors.New("invalid HTTPS drive origin")
 	}
 	public := variable("DRIVE_PUBLIC_ROOT", "/CloudSite")
-	private := path.Join(public, variable("DRIVE_PRIVATE_FOLDER", "DriveSpaces"))
-	if path.Clean(public) != public || !strings.HasPrefix(public, "/") || public == "/" || path.Dir(private) != public || !cloud.ValidName(path.Base(private)) {
+	private := path.Join(public, variable("DRIVE_PRIVATE_FOLDER", "DriveSpace"))
+	legacy := path.Join(public, "DriveSpaces")
+	if path.Clean(public) != public || !strings.HasPrefix(public, "/") || public == "/" || path.Dir(private) != public || !cloud.ValidName(path.Base(private)) || strings.EqualFold(private, legacy) {
 		return errors.New("invalid storage roots")
 	}
 	hosts := map[string]bool{}
@@ -131,7 +132,7 @@ func run() error {
 	if err != nil {
 		return errors.New("115 client configuration failed")
 	}
-	s := &site.Site{OpenRegistration: variable("DRIVE_REGISTER", "true") == "true", Store: db, Drive: native, Links: cloud.Links{Connection: connection, Hosts: hosts}, Connection: connection, Started: time.Now(), Origin: origin, PublicRoot: public, PrivateRoot: private, DownloadEnabled: variable("DRIVE_DOWNLOADS", "true") == "true"}
+	s := &site.Site{OpenRegistration: variable("DRIVE_REGISTER", "true") == "true", Store: db, Drive: native, Links: cloud.Links{Connection: connection, Hosts: hosts}, Connection: connection, Started: time.Now(), Origin: origin, PublicRoot: public, PrivateRoot: private, LegacyRoot: legacy, DownloadEnabled: variable("DRIVE_DOWNLOADS", "true") == "true"}
 	workerDone := make(chan struct{})
 	if s.DownloadEnabled {
 		if err := db.Recover(init); err != nil {
@@ -139,7 +140,7 @@ func run() error {
 		}
 		go func() {
 			defer close(workerDone)
-			(download.Worker{Store: db, Drive: native, PrivateRoot: private}).Run(ctx)
+			(download.Worker{Store: db, Drive: native, PrivateRoot: private, LegacyRoot: legacy}).Run(ctx)
 		}()
 	} else {
 		close(workerDone)

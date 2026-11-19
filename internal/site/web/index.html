@@ -73,7 +73,7 @@
             <span aria-hidden="true">▤</span> 全部文件
           </button>
           <button id="nav-private" type="button" aria-pressed="false">
-            <span aria-hidden="true">▣</span> 私人空间
+            <span aria-hidden="true">▣</span> 云空间
           </button>
           <button id="nav-tasks" type="button" aria-pressed="false">
             <span aria-hidden="true">↓</span> 云下载
@@ -95,6 +95,23 @@
           </button>
         </header>
         <section id="files" aria-label="文件列表">
+          <form
+            id="file-search"
+            class="file-search"
+            role="search"
+            aria-label="文件搜索"
+          >
+            <label for="search-keyword">搜索文件和目录</label>
+            <div>
+              <input
+                id="search-keyword"
+                type="search"
+                maxlength="100"
+                placeholder="输入文件名关键词"
+              />
+              <button type="submit">搜索</button>
+            </div>
+          </form>
           <div class="table-tools">
             <nav id="crumbs" aria-label="当前目录"></nav>
             <button id="refresh" type="button">刷新</button>

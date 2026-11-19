@@ -37,6 +37,13 @@ func TestJobIdempotencyAndRecovery(t *testing.T) {
 		return a
 	}
 	first, second := account(), account()
+	if err := db.BindNamedFolder(ctx, first.ID, first.Login, "1234"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.BindNamedFolder(ctx, second.ID, second.Login, "1234"); err == nil {
+		t.Fatal("a named cloud directory cannot be bound to two accounts")
+	}
+
 	key := Random()
 	source := "https://example.com/test.txt"
 	initial, err := db.Submit(ctx, first.ID, key, source, source)
@@ -67,7 +74,7 @@ func TestJobIdempotencyAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	jobs, err := db.ListJobs(ctx, first.ID)
-	if err != nil || len(jobs) != 1 || jobs[0].Status != "UNCERTAIN" || jobs[0].Source != "" || jobs[0].DirectoryID != "1234" {
+	if err != nil || len(jobs) != 1 || jobs[0].Status != "UNCERTAIN" || jobs[0].Source != "" || jobs[0].DirectoryID != "1234" || !jobs[0].NamedDestination {
 		t.Fatalf("recovery must preserve the target and user scope: %v", err)
 	}
 	next, err := db.Claim(ctx)

@@ -226,6 +226,9 @@ func (n *Native) EnsureChild(ctx context.Context, parent, name string) (string, 
 			return "", err
 		}
 		for _, file := range page.Items {
+			if strings.EqualFold(file.Name, name) && file.Name != name {
+				return "", Unavailable
+			}
 			if file.Name == name {
 				if !file.Directory {
 					return "", Unavailable

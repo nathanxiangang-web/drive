@@ -120,6 +120,7 @@ type Worker struct {
 	Store       *store.Store
 	Drive       *cloud.Native
 	PrivateRoot string
+	LegacyRoot  string
 }
 
 func (w Worker) Run(ctx context.Context) {
@@ -155,17 +156,12 @@ func (w Worker) dispatch(ctx context.Context) {
 		w.finish(ctx, job.ID, "DIRECTORY_UNAVAILABLE", "", "")
 		return
 	}
-	ownerFolder, err := w.Drive.EnsureChild(taskCtx, w.PrivateRoot, account.FolderName())
-	if err != nil || w.Store.BindFolder(taskCtx, job.Owner, ownerFolder) != nil {
+	ownerFolder, err := w.Drive.EnsureChild(taskCtx, w.PrivateRoot, account.Login)
+	if err != nil || w.Store.BindNamedFolder(taskCtx, job.Owner, account.Login, ownerFolder) != nil {
 		w.finish(ctx, job.ID, "DIRECTORY_UNAVAILABLE", "", "")
 		return
 	}
-	directory := path.Join(w.PrivateRoot, account.FolderName())
-	resultDir, err := w.Drive.EnsureChild(taskCtx, directory, "task-"+job.ID[:12])
-	if err != nil {
-		w.finish(ctx, job.ID, "DIRECTORY_UNAVAILABLE", "", "")
-		return
-	}
+	resultDir := ownerFolder
 	_, expected, e := Prepare(job.Source)
 	if e != nil || w.Store.RecordTarget(taskCtx, job.ID, resultDir, expected) != nil {
 		w.finish(ctx, job.ID, "FAILED", "", "")
@@ -204,6 +200,9 @@ func (w Worker) poll(ctx context.Context) {
 		return
 	}
 	for _, job := range jobs {
+		if job.NamedDestination && job.ProviderHash == "" {
+			continue
+		}
 		for _, task := range known {
 			if task == nil || task.InfoHash == "" || (job.ProviderHash != "" && !strings.EqualFold(task.InfoHash, job.ProviderHash)) || task.DirId != job.DirectoryID || task.AddTime < job.Created.Add(-time.Minute).Unix() {
 				continue
@@ -231,12 +230,18 @@ func (w Worker) verify(ctx context.Context, job store.Job, fileID, name string) 
 	if err != nil {
 		return
 	}
-	ownerPath := path.Join(w.PrivateRoot, account.FolderName())
+	ownerPath, folderID := path.Join(w.LegacyRoot, account.FolderName()), account.FolderID
+	if job.NamedDestination {
+		ownerPath, folderID = path.Join(w.PrivateRoot, account.Login), account.NamedFolderID
+	}
 	owner, err := w.Drive.List(ctx, ownerPath, 0, false)
-	if err != nil || owner.CID != account.FolderID {
+	if err != nil || owner.CID != folderID {
 		return
 	}
-	dir := path.Join(ownerPath, "task-"+job.ID[:12])
+	dir := ownerPath
+	if !job.NamedDestination {
+		dir = path.Join(ownerPath, "task-"+job.ID[:12])
+	}
 	for offset := 0; offset < 150; {
 		page, err := w.Drive.List(ctx, dir, offset, true)
 		if err != nil || page.CID != job.DirectoryID {

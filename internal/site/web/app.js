@@ -4,6 +4,8 @@ const el = (id) => document.getElementById(id);
 const state = {
   view: "public",
   parts: [],
+  directory: "",
+  keyword: "",
   offset: 0,
   previous: [],
   page: 1,
@@ -16,7 +18,7 @@ const state = {
 };
 const titles = {
   public: "全部文件",
-  private: "私人空间",
+  private: "云空间",
   tasks: "云下载",
   admin: "管理",
 };
@@ -25,7 +27,7 @@ const statuses = {
   DISPATCHING: "提交中",
   RUNNING: "网盘下载中",
   VERIFYING: "正在确认目标文件",
-  READY: "已保存到私人空间",
+  READY: "已保存到云空间",
   UNCERTAIN: "提交待确认",
   FAILED: "下载失败",
   AUTH_REQUIRED: "115 需要重新授权",
@@ -85,12 +87,13 @@ function extension(name) {
   return i > 0 ? name.slice(i + 1).toLowerCase() : "";
 }
 function fileURL(item) {
+  if (item.ref) return "/api/file?" + new URLSearchParams({ ref: item.ref });
   return (
     "/api/file?" +
     new URLSearchParams({
       area: state.view,
-      dir: state.parts.join("/"),
-      offset: state.offset,
+      dir: item.dir ?? state.directory,
+      offset: item.offset ?? state.offset,
       id: item.id,
     })
   );
@@ -136,6 +139,8 @@ function show(view) {
   state.request++;
   state.view = view;
   state.parts = [];
+  state.directory = "";
+  clearSearch();
   resetPage();
   el("title").textContent = titles[view];
   el("files").hidden = view !== "public" && view !== "private";
@@ -150,23 +155,36 @@ function show(view) {
   else if (view === "admin") loadAdmin();
   else loadFiles();
 }
+function clearSearch() {
+  state.keyword = "";
+  el("search-keyword").value = "";
+}
+function visibleParts(directory) {
+  if (!directory) return [];
+  const parts = directory.split("/");
+  if (parts[0] !== "!legacy") return parts;
+  parts.shift();
+  if (/^task-[a-f0-9]{12}$/.test(parts[0] || "")) parts.shift();
+  return parts;
+}
+function browse(directory) {
+  state.directory = directory;
+  state.parts = visibleParts(directory);
+  clearSearch();
+  resetPage();
+  loadFiles();
+}
 function crumbs() {
-  const items = [
-    action(titles[state.view], () => {
-      state.parts = [];
-      resetPage();
-      loadFiles();
-    }),
-  ];
+  const items = [action(titles[state.view], () => browse(""))];
+  const physical = state.directory ? state.directory.split("/") : [];
+  const hidden = physical.length - state.parts.length;
   state.parts.forEach((part, i) => {
     const divider = document.createElement("span");
     divider.textContent = "/";
     items.push(
       divider,
       action(part, () => {
-        state.parts = state.parts.slice(0, i + 1);
-        resetPage();
-        loadFiles();
+        browse(physical.slice(0, hidden + i + 1).join("/"));
       }),
     );
   });
@@ -176,11 +194,14 @@ async function loadFiles(refresh = false) {
   const ticket = ++state.request;
   const query = new URLSearchParams({
     area: state.view,
-    dir: state.parts.join("/"),
+    dir: state.directory,
     offset: state.offset,
   });
+  if (state.keyword) query.set("q", state.keyword);
   if (refresh) query.set("refresh", "1");
-  el("files-status").textContent = "正在读取目录…";
+  el("files-status").textContent = state.keyword
+    ? "正在搜索…"
+    : "正在读取目录…";
   el("refresh").disabled = true;
   el("prev").disabled = true;
   el("next").disabled = true;
@@ -193,9 +214,8 @@ async function loadFiles(refresh = false) {
         icon = document.createElement("span"),
         name = action(item.name, () => {
           if (item.directory) {
-            state.parts.push(item.name);
-            resetPage();
-            loadFiles();
+            const parent = item.dir ?? state.directory;
+            browse(parent ? parent + "/" + item.name : item.name);
           } else openFile(item);
         });
       icon.className = "row-icon" + (item.directory ? " folder" : "");
@@ -206,6 +226,15 @@ async function loadFiles(refresh = false) {
       name.className = "row-name";
       const first = cell(name);
       first.prepend(icon);
+      if (state.keyword && item.dir) {
+        const where = visibleParts(item.dir).join(" / ");
+        if (where) {
+          const breadcrumb = document.createElement("span");
+          breadcrumb.className = "search-result-path";
+          breadcrumb.textContent = where;
+          first.append(breadcrumb);
+        }
+      }
       const ops = document.createElement("div");
       ops.className = "row-ops";
       if (!item.directory) {
@@ -226,10 +255,16 @@ async function loadFiles(refresh = false) {
     state.next = data.next || 0;
     el("page-number").textContent = "第 " + state.page + " 页";
     el("files-status").textContent = rows.length
-      ? ""
-      : state.view === "private"
-        ? "此目录暂无文件，云下载结果会保存在私人空间。"
-        : "此目录暂无文件";
+      ? state.keyword
+        ? "搜索结果 · " + state.keyword
+        : ""
+      : state.keyword
+        ? data.next
+          ? "本页没有匹配项，可查看下一页。"
+          : "没有找到匹配的文件或目录。"
+        : state.view === "private"
+          ? "此目录暂无文件，云下载结果会保存在云空间。"
+          : "此目录暂无文件";
     el("prev").disabled = state.previous.length === 0;
     el("next").disabled = state.next === 0;
   } catch (error) {
@@ -278,7 +313,7 @@ async function loadTasks() {
         status.textContent = statuses[job.status] || job.status;
         row.append(name, status);
         if (job.status === "READY")
-          row.append(action("打开私人空间", () => show("private")));
+          row.append(action("打开云空间", () => show("private")));
         return row;
       }),
     );
@@ -326,6 +361,19 @@ el("new-task").addEventListener("click", () => {
   el("source").focus();
 });
 el("refresh").addEventListener("click", () => loadFiles(true));
+el("file-search").addEventListener("submit", (event) => {
+  event.preventDefault();
+  state.keyword = el("search-keyword").value.trim();
+  resetPage();
+  loadFiles();
+});
+el("search-keyword").addEventListener("search", () => {
+  if (state.keyword && !el("search-keyword").value) {
+    clearSearch();
+    resetPage();
+    loadFiles();
+  }
+});
 el("prev").addEventListener("click", () => {
   if (state.previous.length) {
     state.offset = state.previous.pop();

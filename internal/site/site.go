@@ -3,6 +3,7 @@ package site
 import (
 	"context"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -27,20 +28,22 @@ const cookieName = "__Host-drive"
 var operationPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{20,64}$`)
 
 type Site struct {
-	OpenRegistration                bool
-	registrationLimit               *rate.Limiter
-	Store                           *store.Store
-	Drive                           *cloud.Native
-	Links                           cloud.Links
-	Origin, PublicRoot, PrivateRoot string
-	Connection                      *cloud.Connection
-	Started                         time.Time
-	configurationLimit              *rate.Limiter
-	DownloadEnabled                 bool
-	loginLimit                      *rate.Limiter
+	OpenRegistration                            bool
+	registrationLimit                           *rate.Limiter
+	Store                                       *store.Store
+	Drive                                       *cloud.Native
+	Links                                       cloud.Links
+	Origin, PublicRoot, PrivateRoot, LegacyRoot string
+	searchKey                                   []byte
+	Connection                                  *cloud.Connection
+	Started                                     time.Time
+	configurationLimit                          *rate.Limiter
+	DownloadEnabled                             bool
+	loginLimit                                  *rate.Limiter
 }
 
 func (s *Site) Routes() http.Handler {
+	s.searchKey, _ = hex.DecodeString(store.Random())
 	s.loginLimit = rate.NewLimiter(rate.Every(2*time.Second), 5)
 	s.registrationLimit = rate.NewLimiter(rate.Every(5*time.Second), 5)
 	s.configurationLimit = rate.NewLimiter(rate.Every(5*time.Second), 2)
@@ -187,7 +190,7 @@ func normalize(relative string) (string, error) {
 }
 
 func (s *Site) publicRestricted(first string) bool {
-	return strings.EqualFold(first, path.Base(s.PrivateRoot)) || strings.EqualFold(first, "云下载")
+	return strings.EqualFold(first, path.Base(s.PrivateRoot)) || strings.EqualFold(first, path.Base(s.LegacyRoot)) || strings.EqualFold(first, "云下载")
 }
 
 func (s *Site) directory(ctx context.Context, a store.Account, area, relative string) (string, error) {
@@ -203,18 +206,7 @@ func (s *Site) directory(ctx context.Context, a store.Account, area, relative st
 		}
 		return path.Join(s.PublicRoot, relative), nil
 	case "private":
-		if a.FolderID == "" {
-			return "", cloud.Missing
-		}
-		base := path.Join(s.PrivateRoot, a.FolderName())
-		p, err := s.Drive.List(ctx, base, 0, false)
-		if err != nil {
-			return "", err
-		}
-		if p.CID != a.FolderID {
-			return "", cloud.Missing
-		}
-		return path.Join(base, relative), nil
+		return s.privateDirectory(ctx, a, relative)
 	}
 	return "", cloud.Missing
 }
@@ -228,7 +220,7 @@ func offset(raw string) (int, error) {
 		return 0, nil
 	}
 	n, err := strconv.Atoi(raw)
-	if err != nil || n < 0 || n > 1000000 {
+	if err != nil || n < 0 || n > 2147483647 {
 		return 0, cloud.Missing
 	}
 	return n, nil
@@ -237,31 +229,37 @@ func offset(raw string) (int, error) {
 func (s *Site) files(w http.ResponseWriter, r *http.Request, a store.Account) {
 	q := r.URL.Query()
 	area, relative := q.Get("area"), q.Get("dir")
-	if area == "private" && a.FolderID == "" && relative == "" {
-		respond(w, 200, cloud.Page{Items: []cloud.Item{}})
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 18*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 23*time.Second)
 	defer cancel()
-	base, err := s.directory(ctx, a, area, relative)
-	n, e := offset(q.Get("offset"))
-	if err != nil || e != nil {
-		fileFailure(w, errors.Join(err, e))
+	n, err := offset(q.Get("offset"))
+	if err != nil || (n >= sourceStride && (area != "private" || relative != "")) {
+		fileFailure(w, cloud.Missing)
 		return
 	}
-	p, err := s.Drive.List(ctx, base, n, q.Get("refresh") == "1")
+	var page entryPage
+	refresh := q.Get("refresh") == "1"
+	switch {
+	case q.Has("q"):
+		page, err = s.searchPage(ctx, a, area, relative, q.Get("q"), n)
+	case area == "private" && relative == "":
+		page, err = s.privateRoot(ctx, a, n, refresh)
+	default:
+		var base string
+		base, err = s.directory(ctx, a, area, relative)
+		if err == nil {
+			page, err = s.listPage(ctx, area, relative, base, n, refresh)
+		}
+	}
+	if errors.Is(err, invalidSearch) {
+		problem(w, 400, err.Error())
+		return
+	}
 	if err != nil {
 		fileFailure(w, err)
 		return
 	}
-	filtered := make([]cloud.Item, 0, len(p.Items))
-	for _, item := range p.Items {
-		if s.visible(area, relative, item) {
-			filtered = append(filtered, item)
-		}
-	}
-	p.Items = filtered
-	respond(w, 200, p)
+	page.Offset = n
+	respond(w, 200, page)
 }
 
 func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
@@ -269,9 +267,16 @@ func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
 	area, relative := q.Get("area"), q.Get("dir")
 	ctx, cancel := context.WithTimeout(r.Context(), 22*time.Second)
 	defer cancel()
+	if ref := q.Get("ref"); ref != "" {
+		s.searchedFile(ctx, w, r, a, ref)
+		return
+	}
 	base, err := s.directory(ctx, a, area, relative)
 	n, e := offset(q.Get("offset"))
-	if err != nil || e != nil {
+	if err != nil || e != nil || n >= sourceStride {
+		if err == nil && e == nil {
+			e = cloud.Missing
+		}
 		fileFailure(w, errors.Join(err, e))
 		return
 	}
@@ -284,22 +289,48 @@ func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
 		if item.ID != q.Get("id") || item.Directory || !s.visible(area, relative, item) {
 			continue
 		}
-		absolute := path.Join(base, item.Name)
-		if !strings.HasPrefix(absolute, s.PublicRoot+"/") {
-			fileFailure(w, cloud.Missing)
-			return
-		}
-		providerPath := strings.TrimPrefix(absolute, s.PublicRoot)
-		target, err := s.Links.Resolve(ctx, providerPath, item, r.UserAgent())
-		if err != nil {
-			fileFailure(w, err)
-			return
-		}
-		w.Header().Set("Location", target)
-		w.WriteHeader(http.StatusFound)
+		s.sendFile(ctx, w, r, base, item)
 		return
 	}
 	fileFailure(w, cloud.Missing)
+}
+
+func (s *Site) searchedFile(ctx context.Context, w http.ResponseWriter, r *http.Request, a store.Account, token string) {
+	ref, err := s.parseSearch(token, a.ID)
+	if err != nil || ref.Item.Directory || !s.searchable(ref.Area, ref.Dir, ref.Item) {
+		fileFailure(w, cloud.Missing)
+		return
+	}
+	base, err := s.directory(ctx, a, ref.Area, ref.Dir)
+	if err != nil {
+		fileFailure(w, err)
+		return
+	}
+	p, err := s.Drive.List(ctx, base, 0, false)
+	if err != nil {
+		fileFailure(w, err)
+		return
+	}
+	if p.CID != ref.Parent {
+		fileFailure(w, cloud.Missing)
+		return
+	}
+	s.sendFile(ctx, w, r, base, ref.Item)
+}
+
+func (s *Site) sendFile(ctx context.Context, w http.ResponseWriter, r *http.Request, base string, item cloud.Item) {
+	absolute := path.Join(base, item.Name)
+	if !strings.HasPrefix(absolute, s.PublicRoot+"/") {
+		fileFailure(w, cloud.Missing)
+		return
+	}
+	target, err := s.Links.Resolve(ctx, strings.TrimPrefix(absolute, s.PublicRoot), item, r.UserAgent())
+	if err != nil {
+		fileFailure(w, err)
+		return
+	}
+	w.Header().Set("Location", target)
+	w.WriteHeader(http.StatusFound)
 }
 
 func fileFailure(w http.ResponseWriter, err error) {
