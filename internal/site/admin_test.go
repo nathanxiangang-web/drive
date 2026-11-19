@@ -30,7 +30,7 @@ func TestAdminAndReaderPermissions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := Site{Store: db, Origin: "https://drive.example.test", DownloadEnabled: true}
+	s := Site{Store: db, Origin: "https://drive.example.test", DownloadEnabled: true, OpenRegistration: true}
 	router := s.Routes()
 	call := func(method, route, token, body string, expected int) *httptest.ResponseRecorder {
 		t.Helper()
@@ -48,6 +48,16 @@ func TestAdminAndReaderPermissions(t *testing.T) {
 		return out
 	}
 	call("GET", "/api/admin/users", "", "", 401)
+	call("POST", "/api/register", "", `{"login":"1234","password":"123456"}`, 400)
+	call("POST", "/api/register", "", `{"login":"中文","password":"ab12+!"}`, 400)
+	newAccount := call("POST", "/api/register", "", `{"login":"8","password":"ab12+!"}`, 204)
+	cookies := newAccount.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].Secure || !cookies[0].HttpOnly {
+		t.Fatal("registration must issue a secure session")
+	}
+	call("POST", "/api/tasks", cookies[0].Value, `{"source":"not-a-url","operation_key":"fixture-register-task-0001"}`, 400)
+	call("GET", "/api/admin/users", cookies[0].Value, "", 403)
+
 	call("POST", "/api/admin/users", adminToken, `{"login":"fixture-reader","password":"fixture-password-only","role":"reader"}`, 204)
 	readerToken, err := db.Authenticate(ctx, "fixture-reader", pass)
 	if err != nil {
@@ -64,4 +74,17 @@ func TestAdminAndReaderPermissions(t *testing.T) {
 	}
 	call("PATCH", "/api/admin/users/fixture-reader", adminToken, `{"role":"reader","enabled":false}`, 204)
 	call("GET", "/api/tasks", readerToken, "", 401)
+	if err := db.ReplaceAdmin(ctx, "fixture-admin", "admin", "fixture-next-password"); err != nil {
+		t.Fatal(err)
+	}
+	call("GET", "/api/admin/users", adminToken, "", 401)
+	if _, err := db.Authenticate(ctx, "fixture-admin", pass); err == nil {
+		t.Fatal("old admin could still log in")
+	}
+	adminToken, err = db.Authenticate(ctx, "admin", "fixture-next-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	call("GET", "/api/admin/users", adminToken, "", 200)
+
 }

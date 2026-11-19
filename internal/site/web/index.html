@@ -8,7 +8,7 @@
     <script src="/app.js" defer></script>
     <script src="/admin.js" defer></script>
   </head>
-  <body>
+  <body data-registration="__REGISTRATION__">
     <main id="login" class="signin" hidden>
       <form id="login-form" class="login-card">
         <span class="logo" aria-hidden="true">D</span>
@@ -30,6 +30,36 @@
         />
         <p id="login-error" class="error" role="alert"></p>
         <button class="primary" type="submit">登录</button>
+        <button id="show-register" type="button" hidden>注册新账号</button>
+      </form>
+      <form id="register-form" class="login-card" hidden>
+        <span class="logo" aria-hidden="true">D</span>
+        <h1>注册 CloudDrive</h1>
+        <label for="register-name">用户名</label>
+        <input
+          id="register-name"
+          autocomplete="username"
+          pattern="[A-Za-z0-9]+"
+          title="仅限英文字母和数字"
+          maxlength="64"
+          required
+        />
+        <label for="register-password">密码</label>
+        <input
+          id="register-password"
+          type="password"
+          autocomplete="new-password"
+          minlength="6"
+          maxlength="72"
+          aria-describedby="register-help"
+          required
+        />
+        <p id="register-help" class="status">
+          至少 6 位，须同时包含英文字母和数字，可加特殊符号。
+        </p>
+        <p id="register-error" class="error" role="alert"></p>
+        <button class="primary" type="submit">注册并登录</button>
+        <button id="back-login" type="button">返回登录</button>
       </form>
     </main>
     <div id="workspace" class="workspace" hidden>

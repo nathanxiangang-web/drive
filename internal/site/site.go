@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"io/fs"
 	"net/http"
 	"path"
 	"regexp"
@@ -28,6 +27,8 @@ const cookieName = "__Host-drive"
 var operationPattern = regexp.MustCompile(`^[a-zA-Z0-9-]{20,64}$`)
 
 type Site struct {
+	OpenRegistration                bool
+	registrationLimit               *rate.Limiter
 	Store                           *store.Store
 	Drive                           *cloud.Native
 	Links                           cloud.Links
@@ -41,10 +42,12 @@ type Site struct {
 
 func (s *Site) Routes() http.Handler {
 	s.loginLimit = rate.NewLimiter(rate.Every(2*time.Second), 5)
+	s.registrationLimit = rate.NewLimiter(rate.Every(5*time.Second), 5)
 	s.configurationLimit = rate.NewLimiter(rate.Every(5*time.Second), 2)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("POST /api/login", s.login)
+	mux.HandleFunc("POST /api/register", s.register)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.HandleFunc("GET /api/session", s.auth(s.session))
 	mux.HandleFunc("GET /api/admin/status", s.admin(s.adminStatus))
@@ -56,11 +59,7 @@ func (s *Site) Routes() http.Handler {
 	mux.HandleFunc("GET /api/file", s.auth(s.file))
 	mux.HandleFunc("GET /api/tasks", s.auth(s.tasks))
 	mux.HandleFunc("POST /api/tasks", s.auth(s.start))
-	web, _ := fs.Sub(assets, "web")
-	mux.Handle("GET /{$}", http.FileServerFS(web))
-	for _, name := range []string{"style.css", "app.js", "admin.js"} {
-		mux.Handle("GET /"+name, http.FileServerFS(web))
-	}
+	s.webRoutes(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -128,8 +127,12 @@ func (s *Site) login(w http.ResponseWriter, r *http.Request) {
 		problem(w, 401, "账号或密码无效")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 43200})
+	sessionCookie(w, token)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func sessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 43200})
 }
 
 func (s *Site) logout(w http.ResponseWriter, r *http.Request) {

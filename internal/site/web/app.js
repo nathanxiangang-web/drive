@@ -105,6 +105,9 @@ function showLogin() {
   state.request++;
   closePlayer();
   el("login").hidden = false;
+  el("login-form").hidden = false;
+  el("register-form").hidden = true;
+  el("show-register").hidden = document.body.dataset.registration !== "true";
   el("workspace").hidden = true;
   el("file-rows").replaceChildren();
 
@@ -390,3 +393,33 @@ setInterval(() => {
 request("/api/session").then(showWorkspace).catch(showLogin);
 
 el("nav-admin").addEventListener("click", () => show("admin"));
+
+el("show-register").addEventListener("click", () => {
+  el("login-form").hidden = true;
+  el("register-form").hidden = false;
+  el("register-name").focus();
+});
+el("back-login").addEventListener("click", () => {
+  el("register-form").reset();
+  showLogin();
+  el("login-name").focus();
+});
+el("register-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submit = event.submitter;
+  const message = el("register-error");
+  submit.disabled = true;
+  message.textContent = "";
+  try {
+    await post("/api/register", {
+      login: el("register-name").value.trim(),
+      password: el("register-password").value,
+    });
+    event.target.reset();
+    showWorkspace(await request("/api/session"));
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    submit.disabled = false;
+  }
+});

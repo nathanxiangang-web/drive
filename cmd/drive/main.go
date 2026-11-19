@@ -63,6 +63,17 @@ func run() error {
 		return errors.New("drive database initialization failed")
 	}
 	defer db.Close()
+	if len(os.Args) == 5 && os.Args[1] == "replace-admin" {
+		password, err := secret(os.Args[4])
+		if err != nil {
+			return err
+		}
+		if err = db.ReplaceAdmin(init, os.Args[2], os.Args[3], password); err != nil {
+			return errors.New("drive administrator change failed")
+		}
+		fmt.Println("Drive administrator updated")
+		return nil
+	}
 	if len(os.Args) > 1 {
 		if len(os.Args) != 4 || (os.Args[1] != "provision" && os.Args[1] != "provision-admin") {
 			return errors.New("usage: drive provision-admin <login> <password-file>")
@@ -87,7 +98,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		if err := db.ProvisionAdmin(init, variable("DRIVE_BOOTSTRAP_LOGIN", "nathan"), password); err != nil {
+		if err := db.ProvisionAdmin(init, variable("DRIVE_BOOTSTRAP_LOGIN", "admin"), password); err != nil {
 			return errors.New("bootstrap account provisioning failed")
 		}
 	}
@@ -120,7 +131,7 @@ func run() error {
 	if err != nil {
 		return errors.New("115 client configuration failed")
 	}
-	s := &site.Site{Store: db, Drive: native, Links: cloud.Links{Connection: connection, Hosts: hosts}, Connection: connection, Started: time.Now(), Origin: origin, PublicRoot: public, PrivateRoot: private, DownloadEnabled: variable("DRIVE_DOWNLOADS", "true") == "true"}
+	s := &site.Site{OpenRegistration: variable("DRIVE_REGISTER", "true") == "true", Store: db, Drive: native, Links: cloud.Links{Connection: connection, Hosts: hosts}, Connection: connection, Started: time.Now(), Origin: origin, PublicRoot: public, PrivateRoot: private, DownloadEnabled: variable("DRIVE_DOWNLOADS", "true") == "true"}
 	workerDone := make(chan struct{})
 	if s.DownloadEnabled {
 		if err := db.Recover(init); err != nil {

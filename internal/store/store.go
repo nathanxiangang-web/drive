@@ -18,7 +18,7 @@ import (
 var Invalid = errors.New("账号或密码无效")
 var Active = errors.New("同一个链接已有待处理任务")
 var Conflict = errors.New("操作编号已被不同链接使用")
-var loginPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{2,63}$`)
+var loginPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
 
 type Store struct {
 	db    *pgxpool.Pool
@@ -105,9 +105,17 @@ func (s *Store) Authenticate(ctx context.Context, login, password string) (strin
 	if err != nil || !match {
 		return "", Invalid
 	}
+	return issueSession(ctx, s.db, account)
+}
+
+type sessionWriter interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+}
+
+func issueSession(ctx context.Context, db sessionWriter, account string) (string, error) {
 	token := Random()
 	digest := sha256.Sum256([]byte(token))
-	if _, err := s.db.Exec(ctx, `INSERT INTO drive_sessions VALUES($1,$2,now()+interval '12 hours')`, digest[:], account); err != nil {
+	if _, err := db.Exec(ctx, `INSERT INTO drive_sessions VALUES($1,$2,now()+interval '12 hours')`, digest[:], account); err != nil {
 		return "", err
 	}
 	return token, nil
