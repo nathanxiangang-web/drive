@@ -20,6 +20,8 @@ import (
 )
 
 var Unavailable = errors.New("115 目录服务暂不可用")
+var Rejected = errors.New("115 拒绝了该下载")
+var Authorize = errors.New("115 需要重新授权")
 var Missing = errors.New("文件或目录不存在")
 
 const PageSize = 50
@@ -77,8 +79,10 @@ func OpenNative(filename string) (*Native, error) {
 	if err := cred.FromCookie(cfg.Entries[cfg.Default].Cookie); err != nil {
 		return nil, Unavailable
 	}
-	client := driver.New().SetHttpClient(&http.Client{Timeout: 12 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}).ImportCredential(&cred)
+	httpClient := &http.Client{Timeout: 12 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := driver.New(driver.WithClient(httpClient), driver.UA(driver.UA115Browser)).ImportCredential(&cred)
+	clear(data)
 	client.Client.SetRetryCount(0)
 	return &Native{client: client, limit: rate.NewLimiter(rate.Every(500*time.Millisecond), 1), gate: make(chan struct{}, 1), cache: make(map[pageKey]cachedPage)}, nil
 }
@@ -240,6 +244,12 @@ func (n *Native) Start(ctx context.Context, source, directoryID string) (string,
 		return "", err
 	}
 	hashes, err := n.client.AddOfflineTaskURIs([]string{source}, directoryID)
+	switch {
+	case errors.Is(err, driver.ErrNotLogin), errors.Is(err, driver.ErrCredentialInvalid), errors.Is(err, driver.ErrSessionExited):
+		return "", Authorize
+	case errors.Is(err, driver.ErrOfflineInvalidLink), errors.Is(err, driver.ErrOfflineNoTimes), errors.Is(err, driver.ErrWrongParams):
+		return "", Rejected
+	}
 	if err != nil || len(hashes) != 1 || hashes[0] == "" || len(hashes[0]) > 128 {
 		return "", Unavailable
 	}

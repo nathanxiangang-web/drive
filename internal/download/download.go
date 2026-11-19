@@ -172,7 +172,14 @@ func (w Worker) dispatch(ctx context.Context) {
 		return
 	}
 	providerHash, err := w.Drive.Start(taskCtx, job.Source, resultDir)
-	if err != nil {
+	switch {
+	case errors.Is(err, cloud.Authorize):
+		w.finish(ctx, job.ID, "AUTH_REQUIRED", "", "")
+		return
+	case errors.Is(err, cloud.Rejected):
+		w.finish(ctx, job.ID, "REJECTED", "", "")
+		return
+	case err != nil:
 		w.finish(ctx, job.ID, "UNCERTAIN", expected, "")
 		return
 	}
@@ -198,7 +205,7 @@ func (w Worker) poll(ctx context.Context) {
 	}
 	for _, job := range jobs {
 		for _, task := range known {
-			if task == nil || !strings.EqualFold(task.InfoHash, job.ProviderHash) || task.DirId != job.DirectoryID || task.AddTime < job.Created.Add(-time.Minute).Unix() {
+			if task == nil || task.InfoHash == "" || (job.ProviderHash != "" && !strings.EqualFold(task.InfoHash, job.ProviderHash)) || task.DirId != job.DirectoryID || task.AddTime < job.Created.Add(-time.Minute).Unix() {
 				continue
 			}
 			switch task.Status {
@@ -206,7 +213,7 @@ func (w Worker) poll(ctx context.Context) {
 				w.finish(ctx, job.ID, "FAILED", "", "")
 			case 0, 1:
 				if job.Status != "RUNNING" {
-					w.finish(ctx, job.ID, "RUNNING", "", task.Name)
+					w.finish(ctx, job.ID, "RUNNING", task.InfoHash, task.Name)
 				}
 			case 2:
 				w.verify(pollCtx, job, task.FileId, task.Name)

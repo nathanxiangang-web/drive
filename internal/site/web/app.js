@@ -3,7 +3,7 @@
 const el=id=>document.getElementById(id);
 const state={view:'public',parts:[],offset:0,previous:[],page:1,next:0,request:0,downloads:false,busy:false,pending:null};
 const titles={public:'全部文件',private:'私人空间',tasks:'云下载'};
-const statuses={QUEUED:'等待提交',DISPATCHING:'提交中',RUNNING:'网盘下载中',VERIFYING:'正在确认目标文件',READY:'已保存到私人空间',UNCERTAIN:'提交待确认',FAILED:'下载失败',DIRECTORY_UNAVAILABLE:'私人目录暂不可用'};
+const statuses={QUEUED:'等待提交',DISPATCHING:'提交中',RUNNING:'网盘下载中',VERIFYING:'正在确认目标文件',READY:'已保存到私人空间',UNCERTAIN:'提交待确认',FAILED:'下载失败',AUTH_REQUIRED:'115 需要重新授权',REJECTED:'115 拒绝了此任务',DIRECTORY_UNAVAILABLE:'私人目录暂不可用'};
 const videoTypes=new Set(['mp4','webm','mkv','mov','m4v','avi']);
 const audioTypes=new Set(['mp3','m4a','aac','flac','ogg','wav']);
 

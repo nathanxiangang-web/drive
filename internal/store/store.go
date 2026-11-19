@@ -170,7 +170,7 @@ func (s *Store) ListJobs(ctx context.Context, owner string) ([]Job, error) {
 }
 
 func (s *Store) ActiveJobs(ctx context.Context) ([]Job, error) {
-	rows, err := s.db.Query(ctx, `SELECT `+jobCols+` FROM drive_jobs WHERE status IN ('RUNNING','VERIFYING','UNCERTAIN') AND provider_hash<>'' ORDER BY updated_at LIMIT 50`)
+	rows, err := s.db.Query(ctx, `SELECT `+jobCols+` FROM drive_jobs WHERE status IN ('RUNNING','VERIFYING','UNCERTAIN') AND directory_id<>'' ORDER BY updated_at LIMIT 50`)
 	return collect(rows, err)
 }
 
