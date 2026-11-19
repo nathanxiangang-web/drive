@@ -34,19 +34,19 @@ type entryPage struct {
 }
 
 func (s *Site) namedSpace(ctx context.Context, a store.Account) (string, error) {
-	if s.Drive == nil || !cloud.ValidName(a.Login) {
+	if s.Drive == nil || !cloud.ValidName(a.CloudFolderName()) {
 		return "", cloud.Missing
 	}
-	base := path.Join(s.PrivateRoot, a.Login)
+	base := path.Join(s.PrivateRoot, a.CloudFolderName())
 	if a.NamedFolderID == "" {
 		if _, err := s.Drive.Child(ctx, s.PublicRoot, path.Base(s.PrivateRoot), false); err != nil {
 			return "", err
 		}
-		id, err := s.Drive.Child(ctx, s.PrivateRoot, a.Login, false)
+		id, err := s.Drive.Child(ctx, s.PrivateRoot, a.CloudFolderName(), false)
 		if err != nil {
 			return "", err
 		}
-		if err := s.Store.BindNamedFolder(ctx, a.ID, a.Login, id); err != nil {
+		if err := s.Store.BindNamedFolder(ctx, a.ID, a.CloudFolderName(), id); err != nil {
 			return "", err
 		}
 		a.NamedFolderID = id

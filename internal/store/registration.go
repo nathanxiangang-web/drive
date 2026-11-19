@@ -26,6 +26,10 @@ func registrationPolicy(login, password string) error {
 	if !registrationLogin.MatchString(login) {
 		return InvalidRegistrationLogin
 	}
+	return validateRegistrationPassword(password)
+}
+
+func validateRegistrationPassword(password string) error {
 	if !utf8.ValidString(password) || utf8.RuneCountInString(password) < 6 || len(password) > 72 {
 		return InvalidRegistrationPassword
 	}
@@ -57,7 +61,7 @@ func (s *Store) Register(ctx context.Context, login, password string) (string, e
 	}
 	defer tx.Rollback(ctx)
 	account := Random()[:32]
-	_, err = tx.Exec(ctx, `INSERT INTO drive_accounts(id,login,password_hash,role) VALUES($1,$2,$3,'member')`, account, login, hash)
+	_, err = tx.Exec(ctx, `INSERT INTO drive_accounts(id,login,storage_name,password_hash,role) VALUES($1,$2,$2,$3,'member')`, account, login, hash)
 	var conflict *pgconn.PgError
 	if errors.As(err, &conflict) && conflict.Code == "23505" {
 		return "", UserExists

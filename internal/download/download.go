@@ -129,8 +129,8 @@ func (w Worker) dispatch(ctx context.Context) {
 		w.finish(ctx, job.ID, "DIRECTORY_UNAVAILABLE", "", "")
 		return
 	}
-	ownerFolder, err := w.Drive.EnsureChild(taskCtx, w.PrivateRoot, account.Login)
-	if err != nil || w.Store.BindNamedFolder(taskCtx, job.Owner, account.Login, ownerFolder) != nil {
+	ownerFolder, err := w.Drive.EnsureChild(taskCtx, w.PrivateRoot, account.CloudFolderName())
+	if err != nil || w.Store.BindNamedFolder(taskCtx, job.Owner, account.CloudFolderName(), ownerFolder) != nil {
 		w.finish(ctx, job.ID, "DIRECTORY_UNAVAILABLE", "", "")
 		return
 	}
@@ -215,7 +215,7 @@ func (w Worker) verify(ctx context.Context, job store.Job, fileID, name string) 
 	}
 	ownerPath, folderID := path.Join(w.LegacyRoot, account.FolderName()), account.FolderID
 	if job.NamedDestination {
-		ownerPath, folderID = path.Join(w.PrivateRoot, account.Login), account.NamedFolderID
+		ownerPath, folderID = path.Join(w.PrivateRoot, account.CloudFolderName()), account.NamedFolderID
 	}
 	owner, err := w.Drive.List(ctx, ownerPath, 0, false)
 	if err != nil || owner.CID != folderID {

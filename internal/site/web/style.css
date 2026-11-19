@@ -467,3 +467,29 @@ video {
     display: table-cell;
   }
 }
+
+#edit-user {
+  max-width: 430px;
+}
+.edit-user-form {
+  display: grid;
+  gap: 0.8rem;
+}
+.edit-user-form label {
+  display: grid;
+  gap: 0.35rem;
+}
+.edit-user-form label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+}
+.edit-user-form input:not([type="checkbox"]),
+.edit-user-form select {
+  min-width: 0;
+  font: inherit;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem;
+}

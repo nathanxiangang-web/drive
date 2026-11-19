@@ -57,6 +57,7 @@ func (s *Site) Routes() http.Handler {
 	mux.HandleFunc("GET /api/admin/users", s.admin(s.adminUsers))
 	mux.HandleFunc("POST /api/admin/users", s.admin(s.createUser))
 	mux.HandleFunc("PATCH /api/admin/users/{login}", s.admin(s.changeUser))
+	mux.HandleFunc("DELETE /api/admin/users/{login}", s.admin(s.deleteUser))
 	mux.HandleFunc("PUT /api/admin/openlist", s.admin(s.configureOpenList))
 	mux.HandleFunc("GET /api/files", s.auth(s.files))
 	mux.HandleFunc("GET /api/file", s.auth(s.file))

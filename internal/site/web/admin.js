@@ -69,58 +69,104 @@ function renderStatus(snapshot) {
     el("openlist-message").textContent = "服务器未配置加密密钥。";
 }
 
-function roleSelect(user, isSelf) {
-  const select = document.createElement("select");
-  select.setAttribute("aria-label", user.login + " 的权限");
-  for (const [role, name] of Object.entries(roleNames)) {
-    const option = document.createElement("option");
-    option.value = role;
-    option.textContent = name;
-    select.append(option);
+const editUser = el("edit-user");
+let editingLogin = "";
+
+function openUserEditor(user) {
+  editingLogin = user.login;
+  el("edit-user-login").value = user.login;
+  el("edit-user-role").value = user.role;
+  el("edit-user-enabled").checked = user.enabled;
+  el("edit-user-password").value = "";
+  el("edit-user-error").textContent = "";
+  editUser.showModal();
+}
+
+function userEndpoint(login) {
+  return "/api/admin/users/" + encodeURIComponent(login);
+}
+
+async function removeUser(user) {
+  if (!window.confirm("删除 " + user.login + " 的网站账号？网盘文件会保留。"))
+    return;
+  try {
+    await request(userEndpoint(user.login), { method: "DELETE" });
+    el("manage-message").textContent = "已删除网站账号 " + user.login;
+    await loadAdmin();
+  } catch (error) {
+    el("manage-message").textContent = error.message;
   }
-  select.value = user.role;
-  select.disabled = isSelf;
-  return select;
 }
 
 function renderUsers(users) {
   const rows = users.map((user) => {
     const row = document.createElement("tr");
-    const isSelf = user.login === el("account").textContent;
-    const select = roleSelect(user, isSelf);
-    const toggle = document.createElement("input");
-    toggle.type = "checkbox";
-    toggle.checked = user.enabled;
-    toggle.disabled = isSelf;
-    toggle.setAttribute("aria-label", user.login + " 是否启用");
-    const save = action("保存", async () => {
-      save.disabled = true;
-      const notice = el("manage-message");
-      try {
-        await request("/api/admin/users/" + encodeURIComponent(user.login), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role: select.value, enabled: toggle.checked }),
-        });
-        notice.textContent = "已保存 " + user.login;
-        await loadAdmin();
-      } catch (error) {
-        notice.textContent = error.message;
-      } finally {
-        save.disabled = false;
-      }
-    });
-    save.disabled = isSelf;
+    const controls = document.createElement("div");
+    controls.className = "row-ops";
+    if (user.role === "admin") {
+      controls.textContent = "管理员受保护";
+    } else {
+      controls.append(
+        action("编辑", () => openUserEditor(user)),
+        action("删除", () => removeUser(user)),
+      );
+    }
     row.append(
-      cell(user.login + (isSelf ? "（当前）" : "")),
-      cell(select),
-      cell(toggle),
-      cell(save),
+      cell(user.login),
+      cell(roleNames[user.role]),
+      cell(user.enabled ? "启用" : "停用"),
+      cell(controls),
     );
     return row;
   });
+  if (!rows.length) {
+    const row = document.createElement("tr");
+    const empty = cell("没有匹配的账号");
+    empty.colSpan = 4;
+    row.append(empty);
+    rows.push(row);
+  }
   el("user-rows").replaceChildren(...rows);
 }
+
+el("edit-user-cancel").addEventListener("click", () => editUser.close());
+editUser.addEventListener("close", () => {
+  el("edit-user-password").value = "";
+});
+el("edit-user-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.submitter;
+  button.disabled = true;
+  try {
+    await request(userEndpoint(editingLogin), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        login: el("edit-user-login").value.trim(),
+        password: el("edit-user-password").value,
+        role: el("edit-user-role").value,
+        enabled: el("edit-user-enabled").checked,
+      }),
+    });
+    editUser.close();
+    el("manage-message").textContent = "账号已更新";
+    await loadAdmin();
+  } catch (error) {
+    if (error.status === 401) {
+      editUser.close();
+      showLogin();
+    } else {
+      el("edit-user-error").textContent = error.message;
+    }
+  } finally {
+    button.disabled = false;
+  }
+});
+
+el("user-filter").addEventListener("submit", (event) => {
+  event.preventDefault();
+  loadAdmin();
+});
 
 async function loadAdmin() {
   if (state.view !== "admin") return;
@@ -130,7 +176,10 @@ async function loadAdmin() {
   try {
     const [status, users] = await Promise.all([
       request("/api/admin/status"),
-      request("/api/admin/users"),
+      request(
+        "/api/admin/users?" +
+          new URLSearchParams({ q: el("user-query").value.trim() }),
+      ),
     ]);
     if (ticket !== state.request) return;
     renderStatus(status);

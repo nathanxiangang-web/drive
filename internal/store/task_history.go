@@ -16,8 +16,8 @@ func (s *Store) HideTasks(ctx context.Context, owner string) error {
 // Disabling sign-in does not stop an already accepted provider transfer.
 func (s *Store) ResultOwner(ctx context.Context, id string) (Account, error) {
 	var account Account
-	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id,role,named_folder_id FROM drive_accounts WHERE id=$1`, id).
-		Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID)
+	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id,role,named_folder_id,storage_name FROM drive_accounts WHERE id=$1`, id).
+		Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID, &account.StorageName)
 	return account, err
 }
 

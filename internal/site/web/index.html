@@ -233,6 +233,21 @@
                 创建账号
               </button>
             </form>
+            <form
+              id="user-filter"
+              class="file-search"
+              role="search"
+              aria-label="用户搜索"
+            >
+              <label for="user-query">查找用户名</label>
+              <div>
+                <input type="search" id="user-query" maxlength="64" /><button
+                  type="submit"
+                >
+                  查找
+                </button>
+              </div>
+            </form>
             <p id="manage-message" class="status" role="status"></p>
             <div class="table-scroll">
               <table>
@@ -251,6 +266,40 @@
         </section>
       </main>
     </div>
+    <dialog id="edit-user" aria-labelledby="edit-user-heading">
+      <h2 id="edit-user-heading">编辑网站账号</h2>
+      <form id="edit-user-form" class="edit-user-form">
+        <label
+          >用户名<input
+            id="edit-user-login"
+            required
+            maxlength="64"
+            autocomplete="off"
+        /></label>
+        <label
+          >新密码<input
+            id="edit-user-password"
+            type="password"
+            minlength="6"
+            maxlength="72"
+            autocomplete="new-password"
+            placeholder="留空保留当前密码"
+        /></label>
+        <label
+          >权限<select id="edit-user-role">
+            <option value="member">可云下载</option>
+            <option value="reader">只读</option>
+            <option value="admin">管理员</option>
+          </select></label
+        >
+        <label><input id="edit-user-enabled" type="checkbox" /> 启用账号</label>
+        <p id="edit-user-error" class="error" role="alert"></p>
+        <div class="row-ops">
+          <button id="edit-user-cancel" type="button">取消</button
+          ><button class="primary" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="player">
       <header>
         <strong id="player-name"></strong

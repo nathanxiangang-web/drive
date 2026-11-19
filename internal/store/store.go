@@ -30,9 +30,17 @@ type Account struct {
 	Role          string `json:"role"`
 	FolderID      string `json:"-"`
 	NamedFolderID string `json:"-"`
+	StorageName   string `json:"-"`
 }
 
 func (a Account) FolderName() string { return "user-" + a.ID }
+
+func (a Account) CloudFolderName() string {
+	if a.StorageName == "" {
+		return a.Login
+	}
+	return a.StorageName
+}
 
 func Random() string { var b [32]byte; rand.Read(b[:]); return hex.EncodeToString(b[:]) }
 
@@ -44,6 +52,11 @@ CREATE TABLE IF NOT EXISTS drive_accounts (
 ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'member'
   CHECK(role IN ('admin','member','reader'));
 ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS storage_name text NOT NULL DEFAULT '';
+ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+UPDATE drive_accounts SET storage_name=login WHERE storage_name='';
+CREATE UNIQUE INDEX IF NOT EXISTS drive_login_case ON drive_accounts(lower(login));
+CREATE UNIQUE INDEX IF NOT EXISTS drive_storage_name ON drive_accounts(lower(storage_name));
 ALTER TABLE drive_accounts ADD COLUMN IF NOT EXISTS named_folder_id text NOT NULL DEFAULT '';
 CREATE UNIQUE INDEX IF NOT EXISTS drive_named_folder ON drive_accounts(named_folder_id) WHERE named_folder_id<>'';
 CREATE TABLE IF NOT EXISTS drive_settings(name text PRIMARY KEY,sealed bytea NOT NULL);
@@ -92,7 +105,7 @@ func (s *Store) Provision(ctx context.Context, login string, password []byte) er
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(ctx, `INSERT INTO drive_accounts(id,login,password_hash) VALUES ($1,$2,$3) ON CONFLICT (login) DO NOTHING`, Random()[:32], login, hash)
+	_, err = s.db.Exec(ctx, `INSERT INTO drive_accounts(id,login,storage_name,password_hash) VALUES ($1,$2,$2,$3) ON CONFLICT DO NOTHING`, Random()[:32], login, hash)
 	return err
 }
 
@@ -110,7 +123,19 @@ func (s *Store) Authenticate(ctx context.Context, login, password string) (strin
 	if err != nil || !match {
 		return "", Invalid
 	}
-	return issueSession(ctx, s.db, account)
+	token := Random()
+	digest := sha256.Sum256([]byte(token))
+	tag, err := s.db.Exec(ctx, `WITH current_account AS (
+ SELECT id FROM drive_accounts WHERE id=$1 AND login=$2 AND password_hash=$3 AND enabled FOR SHARE
+)
+INSERT INTO drive_sessions SELECT $4,id,now()+interval '12 hours' FROM current_account`, account, login, hash, digest[:])
+	if err != nil {
+		return "", err
+	}
+	if tag.RowsAffected() != 1 {
+		return "", Invalid
+	}
+	return token, nil
 }
 
 type sessionWriter interface {
@@ -132,7 +157,7 @@ func (s *Store) Account(ctx context.Context, token string) (Account, error) {
 		return account, Invalid
 	}
 	digest := sha256.Sum256([]byte(token))
-	err := s.db.QueryRow(ctx, `SELECT a.id,a.login,a.folder_id,a.role,a.named_folder_id FROM drive_accounts a JOIN drive_sessions t ON a.id=t.account_id WHERE t.token_hash=$1 AND t.expires_at>now() AND a.enabled`, digest[:]).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID)
+	err := s.db.QueryRow(ctx, `SELECT a.id,a.login,a.folder_id,a.role,a.named_folder_id,a.storage_name FROM drive_accounts a JOIN drive_sessions t ON a.id=t.account_id WHERE t.token_hash=$1 AND t.expires_at>now() AND a.enabled`, digest[:]).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID, &account.StorageName)
 	return account, err
 }
 
@@ -142,8 +167,8 @@ func (s *Store) Logout(ctx context.Context, token string) error {
 	return err
 }
 
-func (s *Store) BindNamedFolder(ctx context.Context, owner, login, folder string) error {
-	tag, err := s.db.Exec(ctx, `UPDATE drive_accounts SET named_folder_id=$3 WHERE id=$1 AND login=$2 AND enabled AND (named_folder_id='' OR named_folder_id=$3)`, owner, login, folder)
+func (s *Store) BindNamedFolder(ctx context.Context, owner, storageName, folder string) error {
+	tag, err := s.db.Exec(ctx, `UPDATE drive_accounts SET named_folder_id=$3 WHERE id=$1 AND storage_name=$2 AND enabled AND (named_folder_id='' OR named_folder_id=$3)`, owner, storageName, folder)
 	if err == nil && tag.RowsAffected() != 1 {
 		return Conflict
 	}
@@ -232,7 +257,7 @@ func (s *Store) Update(ctx context.Context, job, status, providerHash, name stri
 
 func (s *Store) User(ctx context.Context, id string) (Account, error) {
 	var account Account
-	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id,role,named_folder_id FROM drive_accounts WHERE id=$1 AND enabled`, id).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID)
+	err := s.db.QueryRow(ctx, `SELECT id,login,folder_id,role,named_folder_id,storage_name FROM drive_accounts WHERE id=$1 AND enabled`, id).Scan(&account.ID, &account.Login, &account.FolderID, &account.Role, &account.NamedFolderID, &account.StorageName)
 	return account, err
 }
 

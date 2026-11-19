@@ -20,7 +20,7 @@ var (
 	Forbidden      = errors.New("没有管理权限")
 	UserExists     = errors.New("账号已存在")
 	UserMissing    = errors.New("账号不存在")
-	SelfChange     = errors.New("不能修改自己的权限或停用自己的账号")
+	ProtectedAdmin = errors.New("管理员账号受保护")
 	InvalidAccount = errors.New("账号需使用 3–64 个字母、数字或 ._-，密码需为 12–72 字节")
 )
 
@@ -85,7 +85,7 @@ func (s *Store) ProvisionAdmin(ctx context.Context, login, password string) erro
 	if found {
 		_, err = tx.Exec(ctx, `UPDATE drive_accounts SET role='admin' WHERE login=$1`, login)
 	} else {
-		_, err = tx.Exec(ctx, `INSERT INTO drive_accounts(id,login,password_hash,role) VALUES($1,$2,$3,'admin')`, Random()[:32], login, hash)
+		_, err = tx.Exec(ctx, `INSERT INTO drive_accounts(id,login,storage_name,password_hash,role) VALUES($1,$2,$2,$3,'admin')`, Random()[:32], login, hash)
 	}
 	if err != nil {
 		return err
@@ -93,8 +93,8 @@ func (s *Store) ProvisionAdmin(ctx context.Context, login, password string) erro
 	return tx.Commit(ctx)
 }
 
-func (s *Store) Users(ctx context.Context) ([]UserDetails, error) {
-	rows, err := s.db.Query(ctx, `SELECT login,role,enabled,created_at FROM drive_accounts ORDER BY login`)
+func (s *Store) Users(ctx context.Context, query string) ([]UserDetails, error) {
+	rows, err := s.db.Query(ctx, `SELECT login,role,enabled,created_at FROM drive_accounts WHERE deleted_at IS NULL AND strpos(lower(login),lower($1)) > 0 ORDER BY login`, query)
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +109,8 @@ func (s *Store) CreateUser(ctx context.Context, actor, login, password, role str
 	if err != nil {
 		return err
 	}
-	tag, err := s.db.Exec(ctx, `INSERT INTO drive_accounts(id,login,password_hash,role)
-SELECT $1,$2,$3,$4 FROM drive_accounts WHERE id=$5 AND role='admin' AND enabled`, Random()[:32], login, hash, role, actor)
+	tag, err := s.db.Exec(ctx, `INSERT INTO drive_accounts(id,login,storage_name,password_hash,role)
+SELECT $1,$2,$2,$3,$4 FROM drive_accounts WHERE id=$5 AND role='admin' AND enabled`, Random()[:32], login, hash, role, actor)
 	var violation *pgconn.PgError
 	if errors.As(err, &violation) && violation.Code == "23505" {
 		return UserExists
@@ -119,44 +119,6 @@ SELECT $1,$2,$3,$4 FROM drive_accounts WHERE id=$5 AND role='admin' AND enabled`
 		return Forbidden
 	}
 	return err
-}
-
-func (s *Store) ChangeUser(ctx context.Context, actor Account, login, role string, enabled bool) error {
-	if login == actor.Login {
-		return SelfChange
-	}
-	if !validRole(role) {
-		return InvalidAccount
-	}
-	tx, err := s.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, `LOCK TABLE drive_accounts IN SHARE ROW EXCLUSIVE MODE`); err != nil {
-		return err
-	}
-	var authorized bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM drive_accounts WHERE id=$1 AND role='admin' AND enabled)`, actor.ID).Scan(&authorized); err != nil {
-		return err
-	}
-	if !authorized {
-		return Forbidden
-	}
-	var userID string
-	err = tx.QueryRow(ctx, `UPDATE drive_accounts SET role=$2,enabled=$3 WHERE login=$1 RETURNING id`, login, role, enabled).Scan(&userID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return UserMissing
-	}
-	if err != nil {
-		return err
-	}
-	if !enabled {
-		if _, err = tx.Exec(ctx, `DELETE FROM drive_sessions WHERE account_id=$1`, userID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit(ctx)
 }
 
 func (s *Store) LoadOpenList(ctx context.Context) ([]byte, error) {

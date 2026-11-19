@@ -118,6 +118,7 @@ function showLogin() {
   el("user-rows").replaceChildren();
   el("status-grid").replaceChildren();
   el("new-user-form").reset();
+  el("user-filter").reset();
   el("openlist-form").reset();
   el("manage-message").textContent = "";
   el("openlist-message").textContent = "";

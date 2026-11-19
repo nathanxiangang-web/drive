@@ -37,7 +37,7 @@ func (s *Site) adminStatus(w http.ResponseWriter, r *http.Request, _ store.Accou
 }
 
 func (s *Site) adminUsers(w http.ResponseWriter, r *http.Request, _ store.Account) {
-	users, err := s.Store.Users(r.Context())
+	users, err := s.Store.Users(r.Context(), strings.TrimSpace(r.URL.Query().Get("q")))
 	if err != nil {
 		problem(w, 503, "账号列表暂不可用")
 		return
@@ -55,19 +55,19 @@ func (s *Site) createUser(w http.ResponseWriter, r *http.Request, actor store.Ac
 }
 
 func (s *Site) changeUser(w http.ResponseWriter, r *http.Request, actor store.Account) {
-	var input struct {
-		Role    string
-		Enabled *bool
-	}
+	var input store.UserChange
 	if !body(w, r, &input) {
 		return
 	}
-	if input.Enabled == nil {
-		problem(w, 400, "请选择账号状态")
-		return
+	if input.Login != nil {
+		login := strings.TrimSpace(*input.Login)
+		input.Login = &login
 	}
-	err := s.Store.ChangeUser(r.Context(), actor, r.PathValue("login"), input.Role, *input.Enabled)
-	adminResult(w, err)
+	adminResult(w, s.Store.ChangeUser(r.Context(), actor, r.PathValue("login"), input))
+}
+
+func (s *Site) deleteUser(w http.ResponseWriter, r *http.Request, actor store.Account) {
+	adminResult(w, s.Store.DeleteUser(r.Context(), actor, r.PathValue("login")))
 }
 
 func (s *Site) configureOpenList(w http.ResponseWriter, r *http.Request, a store.Account) {
@@ -90,9 +90,9 @@ func adminResult(w http.ResponseWriter, err error) {
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, store.Forbidden):
 		problem(w, 403, err.Error())
-	case errors.Is(err, store.InvalidAccount), errors.Is(err, cloud.InvalidConnection):
+	case errors.Is(err, store.InvalidAccount), errors.Is(err, store.InvalidRegistrationPassword), errors.Is(err, cloud.InvalidConnection):
 		problem(w, 400, err.Error())
-	case errors.Is(err, store.SelfChange), errors.Is(err, store.UserExists):
+	case errors.Is(err, store.ProtectedAdmin), errors.Is(err, store.UserExists):
 		problem(w, 409, err.Error())
 	case errors.Is(err, store.UserMissing):
 		problem(w, 404, err.Error())
