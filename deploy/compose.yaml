@@ -9,7 +9,7 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     environment:
-      DRIVE_ORIGIN: https://drive.netioi.com
+      DRIVE_ORIGIN: https://cloud.netioi.com
       DRIVE_PUBLIC_ROOT: /CloudSite
       DRIVE_PRIVATE_FOLDER: DriveSpace
       DRIVE_OPENLIST_BASE: http://openlist:5244

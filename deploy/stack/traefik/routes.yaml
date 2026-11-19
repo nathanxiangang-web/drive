@@ -1,0 +1,21 @@
+http:
+  routers:
+    openlist:
+      rule: Host(`pan.netioi.com`)
+      entryPoints: [websecure]
+      service: openlist
+      tls: {certResolver: public}
+    cloudsite:
+      rule: Host(`cloud.netioi.com`)
+      entryPoints: [websecure]
+      service: drive
+      tls: {certResolver: public}
+  services:
+    openlist:
+      loadBalancer:
+        servers:
+          - url: http://openlist:5244
+    drive:
+      loadBalancer:
+        servers:
+          - url: http://cloudsite-drive-app:8098

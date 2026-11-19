@@ -1,0 +1,116 @@
+name: my-servers
+services:
+  postgres:
+    image: docker.io/library/postgres@sha256:68e33adb18d9962952f00d5e3b8644305e10e375f98dd652bf6ee6a1836314ba
+    restart: unless-stopped
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=40]
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/db-secrets/postgres.password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./private/postgres:/run/db-secrets:ro
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/01-applications.sh:ro
+    networks: [data]
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, postgres]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  openlist:
+    image: docker.io/openlistteam/openlist@sha256:e346ed04eae6e82db290cb31f727e71772e32c370750468630da6aaab3a99729
+    restart: unless-stopped
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - export OPENLIST_ADMIN_PASSWORD="$$(cat /run/openlist-private/admin.password)"; exec /entrypoint.sh
+    environment:
+      UMASK: "027"
+      TZ: Asia/Shanghai
+    volumes:
+      - ./openlist/data:/opt/openlist/data
+      - ./private/openlist:/run/openlist-private:ro
+    networks: [app, proxy]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:5244/]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  traefik:
+    image: docker.io/library/traefik@sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d
+    restart: unless-stopped
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --certificatesresolvers.public.acme.storage=/acme/acme.json
+      - --certificatesresolvers.public.acme.httpchallenge=true
+      - --certificatesresolvers.public.acme.httpchallenge.entrypoint=web
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./traefik:/etc/traefik/dynamic:ro
+      - ./acme:/acme
+    networks: [proxy]
+  drive:
+    image: cloudsite-drive:local
+    build: ./drive/artifact
+    pull_policy: build
+    container_name: cloudsite-drive-app
+    user: "10002:10002"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      DRIVE_ORIGIN: https://cloud.netioi.com
+      DRIVE_PUBLIC_ROOT: /CloudSite
+      DRIVE_PRIVATE_FOLDER: DriveSpace
+      DRIVE_OPENLIST_BASE: http://openlist:5244
+      DRIVE_CDN_HOSTS: cdnfhnfile.115cdn.net
+    volumes:
+      - ./drive/private/database-url:/run/drive/database-url:ro
+      - ./drive/private/openlist-token:/run/drive/openlist-token:ro
+      - ./drive/private/openlist-key:/run/drive/openlist-key:ro
+      - ./private/115drive/config.toml:/run/drive/115.toml:ro
+    networks: [data, app, proxy]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openlist:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8098/healthz]
+      interval: 10s
+      timeout: 4s
+      retries: 5
+  backup:
+    image: my-servers/backup:2
+    build: ./backup
+    pull_policy: build
+    restart: unless-stopped
+    init: true
+    volumes:
+      - ./:/source:ro
+      - backup-state:/state
+    networks: [data, provider]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openlist:
+        condition: service_healthy
+      drive:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: {max-file: "3", max-size: 5m}
+volumes:
+  postgres-data:
+  backup-state:
+networks:
+  app:
+  data:
+    internal: true
+  provider:
+  proxy:

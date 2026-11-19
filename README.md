@@ -38,5 +38,11 @@ docker build -t cloudsite-drive:local deploy
 
 部署默认开放注册，使用 `DRIVE_REGISTER=false` 可关闭。公开用户名只接受英文字母和数字，允许纯数字。密码至少 6 字符并同时含英文和数字。注册成功后使用可云下载权限。带内容指纹的静态文件可长期缓存并通过 gzip 传输，登录页根据 ETag 协商更新，账号、文件清单和临时下载地址均禁止浏览器共享缓存。
 
+### 公网部署与备份
+
+`deploy/stack` 是 CloudDrive、OpenList、PostgreSQL、Traefik 和备份服务的 Compose 配置。CloudDrive 使用 `cloud.netioi.com`，OpenList 使用 `pan.netioi.com`。部署目录在 `/opt/my-servers`，CloudDrive 的 Dockerfile 与 Linux amd64 可执行文件放在 `drive/artifact`，备份服务的 115driver v1.3.5 与许可证放在 `backup`。私有配置由管理员在主机保存。
+
+备份仅收录运行所需的文件、CloudDrive 逻辑数据库和 OpenList SQLite 快照。每天北京时间 03:00 上传到 115 的 `/Backup`，迁移步骤见 [备份与恢复](deploy/stack/backup/恢复说明.md)。
+
 
 云下载保留粘贴链接中的 Tracker 和其他参数，仅还原从网页复制的磁力链接分隔符。每次明确提交都交给 115 决定，重复网络请求按提交编号保持幂等。任务列表展示 115 返回的进度，允许清除单条或清空显示记录。清除记录后，已经提交的任务仍然执行，结果依旧保存在云空间。
