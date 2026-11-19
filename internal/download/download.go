@@ -5,6 +5,7 @@ import (
 	"encoding/base32"
 	"encoding/hex"
 	"errors"
+	"math"
 	"net"
 	"net/url"
 	"path"
@@ -17,29 +18,28 @@ import (
 	"github.com/nathanxiangang-web/drive/internal/store"
 )
 
-var InvalidSource = errors.New("请输入有效的 HTTP、HTTPS、ED2K 或 BTIH 磁力链接")
+var InvalidSource = errors.New("请输入 HTTP、HTTPS、ED2K 或磁力链接")
 
+// Prepare preserves the source accepted by the provider. A BTIH is only a
+// recovery hint and is not required for submission.
 func Prepare(raw string) (execution, hash string, err error) {
-	if raw == "" || len(raw) > 65536 || !utf8.ValidString(raw) || strings.TrimSpace(raw) != raw || strings.ContainsFunc(raw, unicode.IsControl) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || !utf8.ValidString(raw) || strings.ContainsFunc(raw, unicode.IsControl) {
 		return "", "", InvalidSource
 	}
 	scheme, _, _ := strings.Cut(raw, ":")
 	switch strings.ToLower(scheme) {
-	case "http", "https", "ed2k":
-		if len(raw) > 4096 {
+	case "magnet":
+		raw = strings.ReplaceAll(raw, "&amp;", "&")
+		return raw, recoveryHash(raw), nil
+	case "ed2k":
+		return raw, "", nil
+	case "http", "https":
+		remote, err := url.Parse(raw)
+		if err != nil || remote.Hostname() == "" || remote.User != nil || remote.Opaque != "" {
 			return "", "", InvalidSource
 		}
-		if strings.EqualFold(scheme, "ed2k") {
-			if !strings.HasPrefix(strings.ToLower(raw), "ed2k://|file|") {
-				return "", "", InvalidSource
-			}
-			return raw, "", nil
-		}
-		remote, e := url.Parse(raw)
-		if e != nil || remote.Hostname() == "" || remote.User != nil || remote.Opaque != "" {
-			return "", "", InvalidSource
-		}
-		host := strings.ToLower(remote.Hostname())
+		host := strings.ToLower(strings.TrimSuffix(remote.Hostname(), "."))
 		if !strings.Contains(host, ".") || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
 			return "", "", InvalidSource
 		}
@@ -47,73 +47,46 @@ func Prepare(raw string) (execution, hash string, err error) {
 			return "", "", InvalidSource
 		}
 		return raw, "", nil
-	case "magnet":
-		return magnet(raw)
 	default:
 		return "", "", InvalidSource
 	}
 }
 
-func magnet(raw string) (string, string, error) {
-	parsed, e := url.Parse(strings.ReplaceAll(raw, "&amp;", "&"))
-	if e != nil || parsed.Host != "" || parsed.Path != "" || parsed.Opaque != "" || strings.Contains(raw, "#") || strings.Count(parsed.RawQuery, "&") >= 512 {
-		return "", "", InvalidSource
+func recoveryHash(raw string) string {
+	link, err := url.Parse(raw)
+	if err != nil {
+		return ""
 	}
-	items, e := url.ParseQuery(parsed.RawQuery)
-	if e != nil {
-		return "", "", InvalidSource
-	}
-	var hash, name string
-	var seenName bool
-	for key, values := range items {
+	var hash string
+	for key, values := range link.Query() {
+		if !strings.EqualFold(key, "xt") {
+			continue
+		}
 		for _, value := range values {
-			if !utf8.ValidString(value) || strings.ContainsFunc(value, unicode.IsControl) {
-				return "", "", InvalidSource
+			value, ok := strings.CutPrefix(strings.ToLower(value), "urn:btih:")
+			if !ok {
+				continue
 			}
-			switch strings.ToLower(key) {
-			case "so":
-				return "", "", errors.New("暂不支持磁力链接的选定文件下载")
-			case "xt":
-				const prefix = "urn:btih:"
-				if !strings.HasPrefix(strings.ToLower(value), prefix) {
-					return "", "", errors.New("只支持 BTIH 磁力链接")
-				}
-				h := value[len(prefix):]
-				var decoded []byte
-				var err error
-				if len(h) == 40 {
-					decoded, err = hex.DecodeString(h)
-				} else if len(h) == 32 {
-					decoded, err = base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(h))
-				}
-				if err != nil || len(decoded) != 20 {
-					return "", "", InvalidSource
-				}
-				next := hex.EncodeToString(decoded)
-				if hash != "" && hash != next {
-					return "", "", InvalidSource
-				}
-				hash = next
-			case "dn":
-				if seenName && name != value {
-					return "", "", InvalidSource
-				}
-				name = value
-				seenName = true
+			var decoded []byte
+			switch len(value) {
+			case 40:
+				decoded, err = hex.DecodeString(value)
+			case 32:
+				decoded, err = base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(value))
+			default:
+				return ""
 			}
+			if err != nil || len(decoded) != 20 {
+				return ""
+			}
+			candidate := hex.EncodeToString(decoded)
+			if hash != "" && candidate != hash {
+				return ""
+			}
+			hash = candidate
 		}
 	}
-	if hash == "" {
-		return "", "", errors.New("磁力链接缺少有效的 BTIH")
-	}
-	result := "magnet:?xt=urn:btih:" + hash
-	if name != "" {
-		result += "&dn=" + strings.ReplaceAll(url.QueryEscape(name), "+", "%20")
-	}
-	if len(result) > 4096 {
-		return "", "", InvalidSource
-	}
-	return result, hash, nil
+	return hash
 }
 
 type Worker struct {
@@ -195,7 +168,7 @@ func (w Worker) poll(ctx context.Context) {
 	if err != nil || len(jobs) == 0 {
 		return
 	}
-	known, err := w.Drive.Tasks(pollCtx)
+	known, complete, err := w.Drive.Tasks(pollCtx)
 	if err != nil {
 		return
 	}
@@ -203,21 +176,31 @@ func (w Worker) poll(ctx context.Context) {
 		if job.NamedDestination && job.ProviderHash == "" {
 			continue
 		}
+		found := false
 		for _, task := range known {
 			if task == nil || task.InfoHash == "" || (job.ProviderHash != "" && !strings.EqualFold(task.InfoHash, job.ProviderHash)) || task.DirId != job.DirectoryID || task.AddTime < job.Created.Add(-time.Minute).Unix() {
 				continue
 			}
+			found = true
+			progress := task.Percent
+			if math.IsNaN(progress) || progress < 0 || progress > 100 {
+				progress = -1
+			}
+			_ = w.Store.ObserveTask(pollCtx, job.ID, "LISTED", progress)
 			switch task.Status {
 			case -1:
 				w.finish(ctx, job.ID, "FAILED", "", "")
 			case 0, 1:
-				if job.Status != "RUNNING" {
+				if job.Status != "RUNNING" || (task.Name != "" && job.Name != task.Name) {
 					w.finish(ctx, job.ID, "RUNNING", task.InfoHash, task.Name)
 				}
 			case 2:
 				w.verify(pollCtx, job, task.FileId, task.Name)
 			}
 			break
+		}
+		if !found && complete && time.Since(job.Created) > time.Minute {
+			_ = w.Store.ObserveTask(pollCtx, job.ID, "NOT_LISTED", -1)
 		}
 	}
 }
@@ -226,7 +209,7 @@ func (w Worker) verify(ctx context.Context, job store.Job, fileID, name string) 
 	if job.Status != "VERIFYING" {
 		w.finish(ctx, job.ID, "VERIFYING", "", name)
 	}
-	account, err := w.Store.User(ctx, job.Owner)
+	account, err := w.Store.ResultOwner(ctx, job.Owner)
 	if err != nil {
 		return
 	}

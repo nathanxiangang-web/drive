@@ -3,21 +3,26 @@ package download
 import (
 	"github.com/nathanxiangang-web/drive/internal/cloud"
 	"github.com/nathanxiangang-web/drive/internal/store"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestSourceKeepsIdentityAndRejectsSelectiveDownloads(t *testing.T) {
+func TestSourcePassesCompleteMagnetThrough(t *testing.T) {
 	const hash = "0123456789abcdef0123456789abcdef01234567"
 	base := "magnet:?xt=urn:btih:" + hash
-	got, id, err := Prepare(base + "&amp;dn=sample&amp;tr=udp%3A%2F%2Ftracker.invalid")
-	if err != nil || id != hash || got != base+"&dn=sample" {
-		t.Fatalf("normalized input: %q %q %v", got, id, err)
+	params := "&amp;dn=sample&amp;so=0&amp;tr=udp%3A%2F%2Ftracker.invalid" + strings.Repeat("&amp;tr=https://tracker.invalid/announce", 2500)
+	got, id, err := Prepare(base + params)
+	if err != nil || id != hash || got != base+strings.ReplaceAll(params, "&amp;", "&") {
+		t.Fatal("magnet parameters must reach the provider unchanged")
 	}
-	for _, s := range []string{base + "&amp;%73o=0", base + "&xt=urn:btih:1111111111111111111111111111111111111111", "magnet:?dn=no-hash", "https://127.0.0.1/file"} {
-		if _, _, err := Prepare(s); err == nil {
-			t.Errorf("accepted %q", s)
+	for _, value := range []string{"magnet:?dn=no-hash&so=0", "magnet:?xt=urn:btmh:1220&tr=http://tracker.invalid"} {
+		if got, _, err := Prepare(value); err != nil || got != value {
+			t.Fatal("the provider decides which magnet formats it supports")
 		}
+	}
+	if _, _, err := Prepare("https://127.0.0.1/file"); err == nil {
+		t.Fatal("loopback URL accepted")
 	}
 }
 

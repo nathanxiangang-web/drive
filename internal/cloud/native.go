@@ -282,26 +282,35 @@ func (n *Native) Start(ctx context.Context, source, directoryID string) (string,
 	return strings.ToLower(hashes[0]), nil
 }
 
-func (n *Native) Tasks(ctx context.Context) ([]*driver.OfflineTask, error) {
+func (n *Native) Tasks(ctx context.Context) ([]*driver.OfflineTask, bool, error) {
 	release, err := n.acquire(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer release()
 	var list []*driver.OfflineTask
+	var expectedCount int64
+	consistent := true
 	for number := int64(1); number <= 3; number++ {
 		if err := n.limit.Wait(ctx); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		var data driver.OfflineTaskResp
 		resp, err := n.client.NewRequest().SetContext(ctx).SetResult(&data).ForceContentType("application/json;charset=UTF-8").SetQueryParam("page", strconv.FormatInt(number, 10)).Get(driver.ApiListOfflineUrl)
 		if err := driver.CheckErr(err, &data, resp); err != nil {
-			return nil, Unavailable
+			return nil, false, Unavailable
 		}
+		if number == 1 {
+			expectedCount = data.Count
+		}
+		consistent = consistent && data.Page == number && data.Count == expectedCount
 		list = append(list, data.Tasks...)
-		if number >= data.PageCount {
+		if data.PageCount > 0 && number >= data.PageCount {
+			return list, consistent && int64(len(list)) == expectedCount, nil
+		}
+		if len(data.Tasks) == 0 {
 			break
 		}
 	}
-	return list, nil
+	return list, false, nil
 }

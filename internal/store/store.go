@@ -16,7 +16,6 @@ import (
 )
 
 var Invalid = errors.New("账号或密码无效")
-var Active = errors.New("同一个链接已有待处理任务")
 var Conflict = errors.New("操作编号已被不同链接使用")
 var loginPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$`)
 
@@ -60,8 +59,10 @@ CREATE TABLE IF NOT EXISTS drive_jobs (
 ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS named_destination boolean NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS drive_jobs_pending ON drive_jobs(status,created_at);
 CREATE INDEX IF NOT EXISTS drive_jobs_owner ON drive_jobs(owner,created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS drive_jobs_active_source ON drive_jobs(owner,source_hash)
-WHERE status IN ('QUEUED','DISPATCHING','RUNNING','VERIFYING','UNCERTAIN');`
+DROP INDEX IF EXISTS drive_jobs_active_source;
+ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS hidden_at timestamptz;
+ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS provider_progress real NOT NULL DEFAULT -1;
+ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS provider_visible text NOT NULL DEFAULT '';`
 
 func Open(ctx context.Context, dsn string) (*Store, error) {
 	db, err := pgxpool.New(ctx, dsn)
@@ -156,16 +157,18 @@ type Job struct {
 	ProviderHash     string    `json:"-"`
 	DirectoryID      string    `json:"-"`
 	NamedDestination bool      `json:"-"`
+	Progress         float64   `json:"progress"`
+	ProviderVisible  string    `json:"provider_visible,omitempty"`
 	Name             string    `json:"name"`
 	Status           string    `json:"status"`
 	Created          time.Time `json:"created"`
 }
 
-const jobCols = `id,owner,source,provider_hash,directory_id,name,status,created_at,named_destination`
+const jobCols = `id,owner,source,provider_hash,directory_id,name,status,created_at,named_destination,provider_progress,provider_visible`
 
 func scanJob(row pgx.Row) (Job, error) {
 	var j Job
-	err := row.Scan(&j.ID, &j.Owner, &j.Source, &j.ProviderHash, &j.DirectoryID, &j.Name, &j.Status, &j.Created, &j.NamedDestination)
+	err := row.Scan(&j.ID, &j.Owner, &j.Source, &j.ProviderHash, &j.DirectoryID, &j.Name, &j.Status, &j.Created, &j.NamedDestination, &j.Progress, &j.ProviderVisible)
 	return j, err
 }
 
@@ -176,15 +179,11 @@ ON CONFLICT(owner,operation_key) DO UPDATE SET operation_key=EXCLUDED.operation_
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Job{}, Conflict
 	}
-	var violation *pgconn.PgError
-	if errors.As(err, &violation) && violation.Code == "23505" && violation.ConstraintName == "drive_jobs_active_source" {
-		return Job{}, Active
-	}
 	return j, err
 }
 
 func (s *Store) ListJobs(ctx context.Context, owner string) ([]Job, error) {
-	rows, err := s.db.Query(ctx, `SELECT `+jobCols+` FROM drive_jobs WHERE owner=$1 ORDER BY created_at DESC LIMIT 100`, owner)
+	rows, err := s.db.Query(ctx, `SELECT `+jobCols+` FROM drive_jobs WHERE owner=$1 AND hidden_at IS NULL ORDER BY created_at DESC LIMIT 100`, owner)
 	return collect(rows, err)
 }
 

@@ -62,6 +62,8 @@ func (s *Site) Routes() http.Handler {
 	mux.HandleFunc("GET /api/file", s.auth(s.file))
 	mux.HandleFunc("GET /api/tasks", s.auth(s.tasks))
 	mux.HandleFunc("POST /api/tasks", s.auth(s.start))
+	mux.HandleFunc("DELETE /api/tasks", s.auth(s.clearTasks))
+	mux.HandleFunc("DELETE /api/tasks/{id}", s.auth(s.clearTask))
 	s.webRoutes(mux)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -103,11 +105,15 @@ func problem(w http.ResponseWriter, code int, message string) {
 }
 
 func body(w http.ResponseWriter, r *http.Request, target any) bool {
+	return bodyWithLimit(w, r, target, 70<<10)
+}
+
+func bodyWithLimit(w http.ResponseWriter, r *http.Request, target any, limit int64) bool {
 	if media := strings.Split(r.Header.Get("Content-Type"), ";")[0]; media != "application/json" {
 		problem(w, 415, "请求格式无效")
 		return false
 	}
-	decode := json.NewDecoder(http.MaxBytesReader(w, r.Body, 70<<10))
+	decode := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	decode.DisallowUnknownFields()
 	if decode.Decode(target) != nil || decode.Decode(new(any)) != io.EOF {
 		problem(w, 400, "请求格式无效")
@@ -363,32 +369,25 @@ func (s *Site) start(w http.ResponseWriter, r *http.Request, a store.Account) {
 		Source string `json:"source"`
 		Key    string `json:"operation_key"`
 	}
-	if !body(w, r, &input) {
+	if !bodyWithLimit(w, r, &input, 1<<20) {
 		return
 	}
 	if !operationPattern.MatchString(input.Key) {
 		problem(w, 400, "提交编号无效")
 		return
 	}
-	prepared, identity, err := download.Prepare(input.Source)
+	prepared, _, err := download.Prepare(input.Source)
 	if err != nil {
 		problem(w, 400, err.Error())
 		return
 	}
-	if identity == "" {
-		identity = prepared
-	}
-	job, err := s.Store.Submit(r.Context(), a.ID, input.Key, identity, prepared)
-	if errors.Is(err, store.Active) {
-		problem(w, 409, err.Error())
-		return
-	}
+	job, err := s.Store.Submit(r.Context(), a.ID, input.Key, prepared, prepared)
 	if errors.Is(err, store.Conflict) {
 		problem(w, 409, "提交编号已被其他链接使用")
 		return
 	}
 	if err != nil {
-		problem(w, 503, "暂时无法保存任务，请用同一次提交重试")
+		problem(w, 503, "暂时无法保存任务，请重试")
 		return
 	}
 	respond(w, 202, job)

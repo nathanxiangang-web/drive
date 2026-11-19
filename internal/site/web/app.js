@@ -298,6 +298,34 @@ function closePlayer() {
 function timestamp(iso) {
   return new Date(iso).toLocaleString("zh-CN");
 }
+function taskStatus(job) {
+  if (
+    job.provider_visible === "NOT_LISTED" &&
+    ["RUNNING", "UNCERTAIN"].includes(job.status)
+  )
+    return "115 暂未返回该任务";
+  const status = statuses[job.status] || job.status;
+  if (
+    job.status === "RUNNING" &&
+    Number.isFinite(job.progress) &&
+    job.progress >= 0
+  )
+    return status + " · " + Math.round(job.progress * 10) / 10 + "%";
+  return status;
+}
+async function clearTaskRecords(endpoint) {
+  try {
+    await request(endpoint, { method: "DELETE" });
+    state.pending = null;
+    if (state.view !== "tasks") return;
+    el("task-status").textContent = "已清除显示记录";
+    await loadTasks();
+  } catch (error) {
+    if (error.status === 401) showLogin();
+    else if (state.view === "tasks")
+      el("task-status").textContent = error.message;
+  }
+}
 async function loadTasks() {
   const ticket = ++state.request;
   el("refresh-tasks").disabled = true;
@@ -310,13 +338,21 @@ async function loadTasks() {
           name = document.createElement("strong"),
           status = document.createElement("span");
         name.textContent = job.name || "云下载 " + timestamp(job.created);
-        status.textContent = statuses[job.status] || job.status;
-        row.append(name, status);
+        status.textContent = taskStatus(job);
+        const controls = document.createElement("div");
+        controls.className = "row-ops";
         if (job.status === "READY")
-          row.append(action("打开云空间", () => show("private")));
+          controls.append(action("打开云空间", () => show("private")));
+        controls.append(
+          action("清除记录", () =>
+            clearTaskRecords("/api/tasks/" + encodeURIComponent(job.id)),
+          ),
+        );
+        row.append(name, status, controls);
         return row;
       }),
     );
+    el("clear-tasks").disabled = jobs.length === 0;
     if (!jobs.length && el("task-status").textContent === "")
       el("task-status").textContent = "暂无任务";
   } catch (error) {
@@ -393,12 +429,7 @@ el("task-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (state.busy) return;
   const source = el("source").value;
-  if (state.pending && state.pending.source !== source) {
-    el("task-status").textContent =
-      "上次结果尚未确认，请用原链接重试同一次提交。";
-    return;
-  }
-  if (!state.pending)
+  if (state.pending?.source !== source)
     state.pending = { source, operation_key: crypto.randomUUID() };
   state.busy = true;
   el("submit").disabled = true;
@@ -410,8 +441,10 @@ el("task-form").addEventListener("submit", async (event) => {
     el("task-status").textContent = "任务已保存";
     if (state.view === "tasks") await loadTasks();
   } catch (error) {
-    el("task-status").textContent = error.message;
-    if (error.status === 400) state.pending = null;
+    el("task-status").textContent = error.status
+      ? error.message
+      : "网络异常，任务状态可在列表里确认。";
+    if (error.status >= 400 && error.status < 500) state.pending = null;
     if (error.status === 401) showLogin();
   } finally {
     state.busy = false;
@@ -419,6 +452,9 @@ el("task-form").addEventListener("submit", async (event) => {
   }
 });
 el("refresh-tasks").addEventListener("click", loadTasks);
+el("clear-tasks").addEventListener("click", () =>
+  clearTaskRecords("/api/tasks"),
+);
 el("player-close").addEventListener("click", closePlayer);
 el("player").addEventListener("cancel", (event) => {
   event.preventDefault();

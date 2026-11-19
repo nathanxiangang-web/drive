@@ -141,7 +141,6 @@
             ><textarea
               id="source"
               required
-              maxlength="65536"
               rows="3"
               placeholder="粘贴磁力、HTTP、HTTPS 或 ED2K 链接"
             ></textarea>
@@ -154,7 +153,10 @@
           <p id="task-status" class="status" role="status"></p>
           <div class="table-tools">
             <h2>我的任务</h2>
-            <button id="refresh-tasks" type="button">刷新状态</button>
+            <div class="row-ops">
+              <button id="refresh-tasks" type="button">刷新状态</button>
+              <button id="clear-tasks" type="button" disabled>清空记录</button>
+            </div>
           </div>
           <ul id="task-rows" class="task-rows"></ul>
         </section>
