@@ -1,0 +1,33 @@
+name: cloudsite-drive
+services:
+  drive:
+    image: cloudsite-drive:local
+    container_name: cloudsite-drive-app
+    user: "10002:10002"
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      DRIVE_ORIGIN: https://drive.netioi.com
+      DRIVE_PUBLIC_ROOT: /CloudSite
+      DRIVE_PRIVATE_FOLDER: DriveSpaces
+      DRIVE_OPENLIST_BASE: http://openlist:5244
+      DRIVE_CDN_HOSTS: cdnfhnfile.115cdn.net
+    volumes:
+      - ./private/database-url:/run/drive/database-url:ro
+      - ./private/openlist-token:/run/drive/openlist-token:ro
+      - ../private/115drive/config.toml:/run/drive/115.toml:ro
+    networks:
+      - data
+      - app
+      - proxy
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8098/healthz]
+      interval: 15s
+      timeout: 4s
+      retries: 5
+networks:
+  data: {external: true, name: my-servers_data}
+  app: {external: true, name: my-servers_app}
+  proxy: {external: true, name: my-servers_proxy}
