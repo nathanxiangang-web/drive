@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -97,10 +98,10 @@ func run() error {
 		return errors.New("invalid storage roots")
 	}
 	hosts := map[string]bool{}
-	validHost := regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)
+	validHost := regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
 	for _, host := range strings.Split(variable("DRIVE_CDN_HOSTS", "cdnfhnfile.115cdn.net"), ",") {
 		host = strings.TrimSpace(host)
-		if !validHost.MatchString(host) || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
+		if !validHost.MatchString(host) || net.ParseIP(host) != nil || strings.HasSuffix(host, ".local") || strings.HasSuffix(host, ".internal") {
 			return errors.New("invalid CDN allowlist")
 		}
 		hosts[host] = true
