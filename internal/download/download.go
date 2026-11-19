@@ -254,12 +254,12 @@ func (w Worker) verify(ctx context.Context, job store.Job, fileID, name string) 
 				w.finish(ctx, job.ID, "READY", "", item.Name)
 				return
 			}
-			if (fileID == "" || fileID == "0") && item.Name == name {
+			if (fileID == "" || fileID == "0") && matchesCompletedName(job, item, name) {
 				nameMatch++
 			}
 		}
-		// Each job has its own empty destination. If the provider supplies no
-		// result ID, require a single matching child in the complete first page.
+		// Without a result ID, require one matching child in the complete page.
+		// A shared user directory must also show that the child is new.
 		if offset == 0 && page.Next == 0 && nameMatch == 1 {
 			w.Drive.Invalidate(ownerPath)
 			w.finish(ctx, job.ID, "READY", "", name)
@@ -270,4 +270,8 @@ func (w Worker) verify(ctx context.Context, job store.Job, fileID, name string) 
 		}
 		offset = page.Next
 	}
+}
+
+func matchesCompletedName(job store.Job, item cloud.Item, name string) bool {
+	return item.Name == name && (!job.NamedDestination || (!item.Created.IsZero() && !item.Created.Before(job.Created.Truncate(time.Second))))
 }

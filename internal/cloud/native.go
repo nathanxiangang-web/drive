@@ -29,10 +29,11 @@ const PageSize = 50
 var cloudID = regexp.MustCompile(`^[0-9]{1,32}$`)
 
 type Item struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Directory bool   `json:"directory"`
-	Size      int64  `json:"size"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Directory bool      `json:"directory"`
+	Size      int64     `json:"size"`
+	Created   time.Time `json:"-"`
 }
 
 type Page struct {
@@ -136,7 +137,7 @@ func (n *Native) listID(ctx context.Context, id string, offset int) (Page, error
 		if file.ParentID != id || !cloudID.MatchString(file.FileID) || !ValidName(file.Name) {
 			return Page{}, Unavailable
 		}
-		page.Items = append(page.Items, Item{ID: file.FileID, Name: file.Name, Directory: file.IsDirectory, Size: file.Size})
+		page.Items = append(page.Items, Item{ID: file.FileID, Name: file.Name, Directory: file.IsDirectory, Size: file.Size, Created: file.CreateTime})
 	}
 	if next := offset + len(result.Files); next < result.Count {
 		page.Next = next

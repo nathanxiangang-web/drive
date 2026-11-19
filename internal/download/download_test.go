@@ -1,6 +1,11 @@
 package download
 
-import "testing"
+import (
+	"github.com/nathanxiangang-web/drive/internal/cloud"
+	"github.com/nathanxiangang-web/drive/internal/store"
+	"testing"
+	"time"
+)
 
 func TestSourceKeepsIdentityAndRejectsSelectiveDownloads(t *testing.T) {
 	const hash = "0123456789abcdef0123456789abcdef01234567"
@@ -13,5 +18,18 @@ func TestSourceKeepsIdentityAndRejectsSelectiveDownloads(t *testing.T) {
 		if _, _, err := Prepare(s); err == nil {
 			t.Errorf("accepted %q", s)
 		}
+	}
+}
+
+func TestCompletedNameCannotMatchPreviouslyDownloadedFile(t *testing.T) {
+	submitted := time.Unix(100, 500)
+	job := store.Job{Created: submitted, NamedDestination: true}
+	item := cloud.Item{Name: "example.mp4", Created: time.Unix(99, 0)}
+	if matchesCompletedName(job, item, item.Name) {
+		t.Fatal("old same-name file was accepted")
+	}
+	item.Created = time.Unix(100, 0)
+	if !matchesCompletedName(job, item, item.Name) {
+		t.Fatal("new same-name file was rejected")
 	}
 }
