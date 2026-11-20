@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"regexp"
 	"strconv"
@@ -61,6 +62,9 @@ func (s *Site) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/admin/openlist", s.admin(s.configureOpenList))
 	mux.HandleFunc("GET /api/files", s.auth(s.files))
 	mux.HandleFunc("GET /api/file", s.auth(s.file))
+	mux.HandleFunc("POST /api/shares", s.auth(s.createShare))
+	mux.HandleFunc("GET /api/shares", s.auth(s.listShares))
+	mux.HandleFunc("DELETE /api/shares/{token}", s.auth(s.revokeShare))
 	mux.HandleFunc("GET /api/tasks", s.auth(s.tasks))
 	mux.HandleFunc("POST /api/tasks", s.auth(s.start))
 	mux.HandleFunc("DELETE /api/tasks", s.auth(s.clearTasks))
@@ -269,75 +273,81 @@ func (s *Site) files(w http.ResponseWriter, r *http.Request, a store.Account) {
 	respond(w, 200, page)
 }
 
-func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
-	q := r.URL.Query()
+type fileSelection struct {
+	Item                    cloud.Item
+	Area, Dir, Base, Parent string
+}
+
+func (s *Site) selectFile(ctx context.Context, a store.Account, q url.Values) (fileSelection, error) {
+	if token := q.Get("ref"); token != "" {
+		ref, err := s.parseSearch(token, a.ID)
+		if err != nil || ref.Item.Directory || !s.searchable(ref.Area, ref.Dir, ref.Item) {
+			return fileSelection{}, cloud.Missing
+		}
+		base, err := s.directory(ctx, a, ref.Area, ref.Dir)
+		if err != nil {
+			return fileSelection{}, err
+		}
+		page, err := s.Drive.List(ctx, base, 0, false)
+		if err != nil {
+			return fileSelection{}, err
+		}
+		if page.CID != ref.Parent {
+			return fileSelection{}, cloud.Missing
+		}
+		area := ref.Area
+		if area == "" {
+			area = "public"
+		}
+		return fileSelection{ref.Item, area, ref.Dir, base, page.CID}, nil
+	}
 	area, relative := q.Get("area"), q.Get("dir")
-	ctx, cancel := context.WithTimeout(r.Context(), 22*time.Second)
-	defer cancel()
-	if ref := q.Get("ref"); ref != "" {
-		s.searchedFile(ctx, w, r, a, ref)
-		return
+	if area == "" {
+		area = "public"
+	}
+	n, err := offset(q.Get("offset"))
+	if err != nil || n >= sourceStride {
+		return fileSelection{}, cloud.Missing
 	}
 	base, err := s.directory(ctx, a, area, relative)
-	n, e := offset(q.Get("offset"))
-	if err != nil || e != nil || n >= sourceStride {
-		if err == nil && e == nil {
-			e = cloud.Missing
-		}
-		fileFailure(w, errors.Join(err, e))
-		return
-	}
-	data, err := s.Drive.List(ctx, base, n, false)
 	if err != nil {
-		fileFailure(w, err)
-		return
+		return fileSelection{}, err
 	}
-	for _, item := range data.Items {
-		if item.ID != q.Get("id") || item.Directory || !s.visible(area, relative, item) {
-			continue
+	page, err := s.Drive.List(ctx, base, n, false)
+	if err != nil {
+		return fileSelection{}, err
+	}
+	for _, item := range page.Items {
+		if item.ID == q.Get("id") && !item.Directory && s.visible(area, relative, item) {
+			return fileSelection{item, area, relative, base, page.CID}, nil
 		}
-		s.sendFile(ctx, w, r, base, item)
-		return
 	}
-	fileFailure(w, cloud.Missing)
+	return fileSelection{}, cloud.Missing
 }
 
-func (s *Site) searchedFile(ctx context.Context, w http.ResponseWriter, r *http.Request, a store.Account, token string) {
-	ref, err := s.parseSearch(token, a.ID)
-	if err != nil || ref.Item.Directory || !s.searchable(ref.Area, ref.Dir, ref.Item) {
-		fileFailure(w, cloud.Missing)
-		return
-	}
-	base, err := s.directory(ctx, a, ref.Area, ref.Dir)
+func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
+	ctx, cancel := context.WithTimeout(r.Context(), 22*time.Second)
+	defer cancel()
+	selected, err := s.selectFile(ctx, a, r.URL.Query())
 	if err != nil {
 		fileFailure(w, err)
 		return
 	}
-	p, err := s.Drive.List(ctx, base, 0, false)
-	if err != nil {
-		fileFailure(w, err)
-		return
-	}
-	if p.CID != ref.Parent {
-		fileFailure(w, cloud.Missing)
-		return
-	}
-	s.sendFile(ctx, w, r, base, ref.Item)
-}
-
-func (s *Site) sendFile(ctx context.Context, w http.ResponseWriter, r *http.Request, base string, item cloud.Item) {
-	absolute := path.Join(base, item.Name)
-	if !strings.HasPrefix(absolute, s.PublicRoot+"/") {
-		fileFailure(w, cloud.Missing)
-		return
-	}
-	target, err := s.Links.Resolve(ctx, strings.TrimPrefix(absolute, s.PublicRoot), item, r.UserAgent())
+	target, err := s.fileTarget(ctx, selected.Base, selected.Item, r.UserAgent())
 	if err != nil {
 		fileFailure(w, err)
 		return
 	}
 	w.Header().Set("Location", target)
 	w.WriteHeader(http.StatusFound)
+}
+
+func (s *Site) fileTarget(ctx context.Context, base string, item cloud.Item, userAgent string) (string, error) {
+	absolute := path.Join(base, item.Name)
+	if !strings.HasPrefix(absolute, s.PublicRoot+"/") {
+		return "", cloud.Missing
+	}
+	return s.Links.Resolve(ctx, strings.TrimPrefix(absolute, s.PublicRoot), item, userAgent)
 }
 
 func fileFailure(w http.ResponseWriter, err error) {

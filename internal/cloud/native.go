@@ -29,11 +29,12 @@ const PageSize = 50
 var cloudID = regexp.MustCompile(`^[0-9]{1,32}$`)
 
 type Item struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Directory bool      `json:"directory"`
-	Size      int64     `json:"size"`
-	Created   time.Time `json:"-"`
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	Directory bool       `json:"directory"`
+	Size      int64      `json:"size"`
+	Created   time.Time  `json:"-"`
+	Modified  *time.Time `json:"modified,omitempty"`
 }
 
 type Page struct {
@@ -137,7 +138,7 @@ func (n *Native) listID(ctx context.Context, id string, offset int) (Page, error
 		if file.ParentID != id || !cloudID.MatchString(file.FileID) || !ValidName(file.Name) {
 			return Page{}, Unavailable
 		}
-		page.Items = append(page.Items, Item{ID: file.FileID, Name: file.Name, Directory: file.IsDirectory, Size: file.Size, Created: file.CreateTime})
+		page.Items = append(page.Items, Item{ID: file.FileID, Name: file.Name, Directory: file.IsDirectory, Size: file.Size, Created: file.CreateTime, Modified: validTime(file.UpdateTime)})
 	}
 	if next := offset + len(result.Files); next < result.Count {
 		page.Next = next
@@ -200,6 +201,13 @@ func (n *Native) Invalidate(directory string) {
 			delete(n.cache, key)
 		}
 	}
+}
+
+func validTime(value time.Time) *time.Time {
+	if value.IsZero() || value.Unix() <= 0 {
+		return nil
+	}
+	return &value
 }
 
 func ValidName(s string) bool {

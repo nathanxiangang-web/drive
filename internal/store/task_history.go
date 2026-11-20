@@ -2,6 +2,12 @@ package store
 
 import "context"
 
+func (s *Store) CompleteJob(ctx context.Context, job, resultID, name string) error {
+	_, err := s.db.Exec(ctx, `UPDATE drive_jobs SET status='READY',result_id=$2,name=$3,source='',updated_at=now()
+WHERE id=$1 AND status IN ('RUNNING','VERIFYING','UNCERTAIN')`, job, resultID, name)
+	return err
+}
+
 func (s *Store) HideTask(ctx context.Context, owner, id string) (bool, error) {
 	tag, err := s.db.Exec(ctx, `UPDATE drive_jobs SET hidden_at=COALESCE(hidden_at,now()) WHERE owner=$1 AND id=$2`, owner, id)
 	return tag.RowsAffected() != 0, err

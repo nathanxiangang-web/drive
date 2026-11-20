@@ -3,16 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>CloudDrive · 文件与云下载</title>
+    <title>Drive · 文件与云下载</title>
     <link rel="stylesheet" href="/style.css" />
     <script src="/app.js" defer></script>
     <script src="/admin.js" defer></script>
+    <script src="/share.js" defer></script>
   </head>
   <body data-registration="__REGISTRATION__">
     <main id="login" class="signin" hidden>
       <form id="login-form" class="login-card">
         <span class="logo" aria-hidden="true">D</span>
-        <h1>CloudDrive</h1>
+        <h1>Drive</h1>
         <label for="login-name">账号</label
         ><input
           id="login-name"
@@ -28,13 +29,21 @@
           required
           maxlength="72"
         />
+        <button
+          class="toggle-password"
+          id="password-visible"
+          type="button"
+          aria-pressed="false"
+        >
+          显示密码
+        </button>
         <p id="login-error" class="error" role="alert"></p>
         <button class="primary" type="submit">登录</button>
         <button id="show-register" type="button" hidden>注册新账号</button>
       </form>
       <form id="register-form" class="login-card" hidden>
         <span class="logo" aria-hidden="true">D</span>
-        <h1>注册 CloudDrive</h1>
+        <h1>注册 Drive</h1>
         <label for="register-name">用户名</label>
         <input
           id="register-name"
@@ -66,90 +75,118 @@
       <aside class="sidebar">
         <a href="/" class="brand"
           ><span class="logo" aria-hidden="true">D</span
-          ><strong>CloudDrive</strong></a
+          ><strong>Drive</strong></a
         >
-        <nav aria-label="网盘导航">
+
+        <nav class="nav-main" aria-label="网盘导航">
           <button id="nav-public" type="button" aria-pressed="true">
-            <span aria-hidden="true">▤</span> 全部文件
+            <span aria-hidden="true">▤</span
+            ><span class="desktop-label">公共资源</span
+            ><span class="mobile-label">文件</span>
           </button>
           <button id="nav-private" type="button" aria-pressed="false">
-            <span aria-hidden="true">▣</span> 云空间
+            <span aria-hidden="true">▣</span>我的空间
           </button>
           <button id="nav-tasks" type="button" aria-pressed="false">
-            <span aria-hidden="true">↓</span> 云下载
-          </button>
-          <button id="nav-admin" type="button" aria-pressed="false" hidden>
-            <span aria-hidden="true">⚙</span> 管理
+            <span aria-hidden="true">↓</span
+            ><span class="desktop-label">云下载</span
+            ><span class="mobile-label">任务</span
+            ><span id="task-badge" class="nav-badge" hidden></span>
           </button>
         </nav>
-        <div class="account">
-          <span id="account"></span
-          ><button id="logout" type="button">退出</button>
-        </div>
+        <details class="account" id="account-menu">
+          <summary>
+            <span id="avatar" class="avatar"></span><span id="account"></span>
+          </summary>
+          <div class="account-actions">
+            <button id="nav-admin" type="button" aria-pressed="false" hidden>
+              站点管理
+            </button>
+            <button id="logout" type="button">退出</button>
+          </div>
+        </details>
       </aside>
       <main class="main">
         <header class="toolbar">
-          <h1 id="title">全部文件</h1>
-          <button id="new-task" class="primary" type="button">
-            新建云下载
-          </button>
-        </header>
-        <section id="files" aria-label="文件列表">
           <form
             id="file-search"
-            class="file-search"
+            class="header-search"
             role="search"
             aria-label="文件搜索"
           >
-            <label for="search-keyword">搜索文件和目录</label>
-            <div>
-              <input
-                id="search-keyword"
-                type="search"
-                maxlength="100"
-                placeholder="输入文件名关键词"
-              />
-              <button type="submit">搜索</button>
-            </div>
+            <input
+              id="search-keyword"
+              type="search"
+              aria-label="搜索当前目录"
+              maxlength="100"
+              placeholder="搜索当前目录"
+            />
+            <button type="submit">搜索</button>
           </form>
-          <div class="table-tools">
-            <nav id="crumbs" aria-label="当前目录"></nav>
-            <button id="refresh" type="button">刷新</button>
+          <button id="new-task" class="primary" type="button">
+            ＋ 新建云下载
+          </button>
+        </header>
+        <p class="toast" id="task-toast" role="status" hidden></p>
+        <section id="files" aria-label="文件列表">
+          <nav id="crumbs" aria-label="当前目录"></nav>
+          <div class="title-row">
+            <div>
+              <h1 id="files-title">公共资源</h1>
+              <p id="search-scope" hidden>当前目录及子目录</p>
+            </div>
+            <div class="row-ops">
+              <button id="clear-search" type="button" hidden>清除搜索</button>
+              <button id="refresh" type="button">刷新</button>
+              <button id="sort-files" type="button" title="按名称排序当前页">
+                本页名称升序
+              </button>
+            </div>
           </div>
           <p id="files-status" class="status" role="status"></p>
           <div class="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>名称</th>
+                  <th>文件名</th>
                   <th>大小</th>
+                  <th>修改时间</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody id="file-rows"></tbody>
             </table>
           </div>
+          <div id="empty-space" class="empty-space" hidden>
+            <p>这里还没有文件</p>
+            <button id="empty-download" class="primary" type="button">
+              新建云下载
+            </button>
+            <button id="browse-public" type="button">去公共资源浏览</button>
+          </div>
           <div class="pagination">
+            <span id="files-count"></span>
             <button id="prev" type="button" disabled>上一页</button
             ><span id="page-number">第 1 页</span
             ><button id="next" type="button" disabled>下一页</button>
           </div>
         </section>
         <section id="tasks" aria-label="云下载任务" hidden>
-          <form id="task-form" class="task-compose">
-            <label for="source">下载链接</label
-            ><textarea
-              id="source"
-              required
-              rows="3"
-              placeholder="粘贴磁力、HTTP、HTTPS 或 ED2K 链接"
-            ></textarea>
-            <div>
-              <button class="primary" id="submit" type="submit">
-                开始下载
-              </button>
-            </div>
-          </form>
+          <h1>云下载</h1>
+          <nav class="task-filters" id="task-filters" aria-label="任务筛选">
+            <button type="button" data-filter="all" aria-pressed="true">
+              全部
+            </button>
+            <button type="button" data-filter="active" aria-pressed="false">
+              进行中
+            </button>
+            <button type="button" data-filter="ready" aria-pressed="false">
+              已完成
+            </button>
+            <button type="button" data-filter="attention" aria-pressed="false">
+              需关注
+            </button>
+          </nav>
           <p id="task-status" class="status" role="status"></p>
           <div class="table-tools">
             <h2>我的任务</h2>
@@ -161,12 +198,26 @@
           <ul id="task-rows" class="task-rows"></ul>
         </section>
         <section id="admin" aria-label="网站管理" hidden>
-          <div class="table-tools">
-            <h2>网站与服务器</h2>
-            <button id="refresh-admin" type="button">刷新管理状态</button>
+          <h1>站点管理</h1>
+          <nav class="task-filters" id="admin-tabs" aria-label="站点管理栏目">
+            <button type="button" data-panel="users" aria-pressed="true">
+              用户管理
+            </button>
+            <button type="button" data-panel="openlist" aria-pressed="false">
+              网盘接入
+            </button>
+            <button type="button" data-panel="status" aria-pressed="false">
+              站点状态
+            </button>
+          </nav>
+          <div data-admin-panel="status" hidden>
+            <div class="table-tools">
+              <h2>网站与服务器</h2>
+              <button id="refresh-admin" type="button">刷新管理状态</button>
+            </div>
+            <dl id="status-grid" class="status-grid"></dl>
           </div>
-          <dl id="status-grid" class="status-grid"></dl>
-          <div class="admin-panel">
+          <div class="admin-panel" data-admin-panel="openlist" hidden>
             <h2>OpenList 接入</h2>
             <p id="connection-state" class="status"></p>
             <form id="openlist-form" class="admin-form">
@@ -202,7 +253,7 @@
             </form>
             <p id="openlist-message" class="status" role="status"></p>
           </div>
-          <div class="admin-panel">
+          <div class="admin-panel" data-admin-panel="users">
             <h2>用户管理</h2>
             <form id="new-user-form" class="admin-form">
               <label
@@ -300,14 +351,116 @@
         </div>
       </form>
     </dialog>
-    <dialog id="player">
-      <header>
-        <strong id="player-name"></strong
-        ><button id="player-close" type="button">关闭</button>
+
+    <dialog id="player" aria-labelledby="player-name">
+      <header class="dialog-head">
+        <h2 id="player-name"></h2>
+        <button id="player-close" type="button">返回列表</button>
       </header>
       <video id="video" controls playsinline preload="metadata"></video>
-      <p id="player-error" role="status"></p>
+      <p id="player-error" role="status" hidden>
+        视频暂时无法播放，可刷新播放地址或下载到设备。
+      </p>
+      <div class="preview-meta">
+        <p id="player-meta"></p>
+        <div class="row-ops">
+          <button id="player-retry" type="button" hidden>重新加载</button>
+          <button id="player-share" type="button">分享</button>
+          <a id="player-download" class="primary button-link" download
+            >下载到设备</a
+          >
+        </div>
+      </div>
     </dialog>
-    <noscript>启用 JavaScript 后即可使用 CloudDrive。</noscript>
+    <dialog
+      id="file-actions"
+      class="sheet small-dialog"
+      aria-labelledby="actions-name"
+    >
+      <header class="dialog-head">
+        <h2 id="actions-name"></h2>
+        <button id="actions-close" type="button">关闭</button>
+      </header>
+      <div class="menu-actions" id="actions-buttons"></div>
+    </dialog>
+    <dialog
+      id="task-dialog"
+      class="sheet small-dialog"
+      aria-labelledby="task-heading"
+    >
+      <header class="dialog-head">
+        <h2 id="task-heading">新建云下载</h2>
+        <button id="task-close" type="button">关闭</button>
+      </header>
+      <form id="task-form" class="task-compose">
+        <label for="source">下载链接</label>
+        <textarea
+          id="source"
+          required
+          rows="3"
+          placeholder="粘贴 HTTP(S)、磁力链接或 ED2K"
+        ></textarea>
+        <p class="form-meta">保存到「我的空间」</p>
+        <p id="submit-status" class="error" role="status"></p>
+        <div class="row-ops">
+          <button id="task-cancel" type="button">取消</button
+          ><button class="primary" id="submit" type="submit">提交任务</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog
+      id="task-detail"
+      class="sheet small-dialog"
+      aria-labelledby="detail-name"
+    >
+      <header class="dialog-head">
+        <h2 id="detail-name"></h2>
+        <button id="detail-close" type="button">关闭</button>
+      </header>
+      <p id="detail-status"></p>
+      <p id="detail-created" class="form-meta"></p>
+      <div id="detail-actions" class="row-ops"></div>
+    </dialog>
+    <dialog
+      id="share-dialog"
+      class="sheet small-dialog"
+      aria-labelledby="share-heading"
+    >
+      <header class="dialog-head">
+        <h2 id="share-heading">分享文件</h2>
+        <button id="share-close" type="button">关闭</button>
+      </header>
+      <strong id="share-name" class="item-name"></strong>
+      <p id="share-location" class="form-meta"></p>
+      <div id="share-setup">
+        <form id="share-form">
+          <label for="share-days">链接有效期</label>
+          <select id="share-days">
+            <option value="1">1 天</option>
+            <option value="7" selected>7 天</option>
+            <option value="30">30 天</option>
+          </select>
+          <p class="form-meta">持链接者可打开此文件。</p>
+          <div class="row-ops">
+            <button id="share-cancel" type="button">取消</button
+            ><button class="primary" type="submit">创建链接</button>
+          </div>
+        </form>
+      </div>
+      <p id="share-status" class="status" role="status"></p>
+      <div id="share-result" hidden>
+        <input id="share-url" type="url" readonly aria-label="分享链接" />
+        <p id="share-expiration" class="form-meta"></p>
+        <div class="row-ops">
+          <button id="share-copy" type="button" class="primary">复制链接</button
+          ><a id="share-open" target="_blank" rel="noreferrer">打开分享</a>
+        </div>
+      </div>
+      <section id="share-records" hidden>
+        <h3>分享记录</h3>
+        <ul id="share-record-list" class="share-record-list"></ul>
+      </section>
+    </dialog>
+    <noscript>启用 JavaScript 后即可使用 Drive。</noscript>
   </body>
 </html>

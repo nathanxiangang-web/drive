@@ -31,7 +31,7 @@ func TestBrowsingScopeRejectsPrivatePathsAndParentTraversal(t *testing.T) {
 func TestProtectedRoutesAndOrigin(t *testing.T) {
 	s := Site{Origin: "https://drive.example.test"}
 	h := s.Routes()
-	for _, route := range []string{"/api/session", "/api/files", "/api/tasks", "/api/file"} {
+	for _, route := range []string{"/api/session", "/api/files", "/api/tasks", "/api/file", "/api/shares"} {
 		response := httptest.NewRecorder()
 		h.ServeHTTP(response, httptest.NewRequest("GET", route, nil))
 		if response.Code != http.StatusUnauthorized {
@@ -47,7 +47,12 @@ func TestProtectedRoutesAndOrigin(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
-	if w.Code != 200 || !strings.Contains(w.Body.String(), "CloudDrive") {
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `id="login-form"`) {
 		t.Fatalf("login shell HTTP %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/s/invalid", nil))
+	if w.Code != 410 || w.Header().Get("Cache-Control") != "no-store" || !strings.Contains(w.Body.String(), "此分享链接已失效") {
+		t.Fatalf("invalid share HTTP %d, headers %v", w.Code, w.Header())
 	}
 }

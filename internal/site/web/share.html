@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow,noarchive" />
+    <title>{{if .Available}}{{.Name}} · Drive 文件分享{{else}}分享链接 · Drive{{end}}</title>
+    <link rel="stylesheet" href="{{.Style}}" />
+    <script src="{{.Script}}" defer></script>
+  </head>
+  <body class="share-page">
+    <div class="landscape" aria-hidden="true">
+      <img src="{{.Background}}" alt="" fetchpriority="high" />
+    </div>
+    <header class="share-header"><a href="/" class="share-brand"><span aria-hidden="true"></span>Drive</a></header>
+    <main>
+      {{if .Available}}
+      <article class="share-card">
+        {{if .Playable}}
+        <div class="share-preview">
+          <img src="{{.Background}}" alt="" />
+          <button id="share-play" class="play-button" type="button" data-url="{{.Download}}" aria-label="播放文件"><span aria-hidden="true"></span></button>
+          <video id="shared-video" hidden controls playsinline preload="none"></video>
+        </div>
+        <p id="share-play-status" role="status" hidden>视频暂时无法播放，可下载到设备。</p>
+        {{end}}
+        <div class="share-file">
+          <div class="share-kind" aria-hidden="true">{{.Format}}</div>
+          <div class="share-file-text">
+            <h1>{{.Name}}</h1>
+            <p>{{.Format}} <span>·</span> {{.Size}}</p>
+          </div>
+          <a class="share-download" href="{{.Download}}" download>下载到设备</a>
+        </div>
+        <footer>有效期至 <time datetime="{{.ExpiresISO}}">{{.Expires}}（北京时间）</time></footer>
+      </article>
+      {{else}}
+      <article class="share-card share-unavailable">
+        <span class="share-kind" aria-hidden="true">↗</span>
+        <h1>{{.Message}}</h1>
+        <p>{{.Hint}}</p>
+        {{if .Back}}<a class="share-download" href="{{.Back}}">返回分享</a>{{end}}
+      </article>
+      {{end}}
+    </main>
+  </body>
+</html>

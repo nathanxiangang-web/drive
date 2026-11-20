@@ -231,27 +231,35 @@ func (w Worker) verify(ctx context.Context, job store.Job, fileID, name string) 
 			return
 		}
 		var nameMatch int
+		var matched cloud.Item
 		for _, item := range page.Items {
 			if fileID != "" && fileID != "0" && item.ID == fileID {
-				w.Drive.Invalidate(ownerPath)
-				w.finish(ctx, job.ID, "READY", "", item.Name)
+				w.ready(ctx, job.ID, ownerPath, item)
 				return
 			}
 			if (fileID == "" || fileID == "0") && matchesCompletedName(job, item, name) {
 				nameMatch++
+				matched = item
 			}
 		}
 		// Without a result ID, require one matching child in the complete page.
 		// A shared user directory must also show that the child is new.
 		if offset == 0 && page.Next == 0 && nameMatch == 1 {
-			w.Drive.Invalidate(ownerPath)
-			w.finish(ctx, job.ID, "READY", "", name)
+			w.ready(ctx, job.ID, ownerPath, matched)
 			return
 		}
 		if page.Next <= offset {
 			return
 		}
 		offset = page.Next
+	}
+}
+
+func (w Worker) ready(ctx context.Context, jobID, ownerPath string, item cloud.Item) {
+	update, cancel := context.WithTimeout(context.WithoutCancel(ctx), 4*time.Second)
+	defer cancel()
+	if w.Store.CompleteJob(update, jobID, item.ID, item.Name) == nil {
+		w.Drive.Invalidate(ownerPath)
 	}
 }
 

@@ -44,7 +44,7 @@ func (n *Native) Search(ctx context.Context, rootID, query string, offset int) (
 		file := (&driver.File{}).From(&row)
 		if ValidName(file.Name) && cloudID.MatchString(file.FileID) && cloudID.MatchString(file.ParentID) &&
 			strings.Contains(strings.ToLower(file.Name), strings.ToLower(query)) {
-			matches = append(matches, Match{Item: Item{ID: file.FileID, Name: file.Name, Directory: file.IsDirectory, Size: file.Size}, ParentID: file.ParentID})
+			matches = append(matches, Match{Item: Item{ID: file.FileID, Name: file.Name, Directory: file.IsDirectory, Size: file.Size, Modified: validTime(file.UpdateTime)}, ParentID: file.ParentID})
 		}
 	}
 	next := offset + len(data.Files)

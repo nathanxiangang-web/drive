@@ -75,14 +75,15 @@ CREATE INDEX IF NOT EXISTS drive_jobs_owner ON drive_jobs(owner,created_at DESC)
 DROP INDEX IF EXISTS drive_jobs_active_source;
 ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS hidden_at timestamptz;
 ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS provider_progress real NOT NULL DEFAULT -1;
-ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS provider_visible text NOT NULL DEFAULT '';`
+ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS provider_visible text NOT NULL DEFAULT '';
+ALTER TABLE drive_jobs ADD COLUMN IF NOT EXISTS result_id text NOT NULL DEFAULT '';`
 
 func Open(ctx context.Context, dsn string) (*Store, error) {
 	db, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(ctx, schema); err != nil {
+	if _, err := db.Exec(ctx, schema+"\n"+shareSchema); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -185,15 +186,16 @@ type Job struct {
 	Progress         float64   `json:"progress"`
 	ProviderVisible  string    `json:"provider_visible,omitempty"`
 	Name             string    `json:"name"`
+	ResultID         string    `json:"result_id,omitempty"`
 	Status           string    `json:"status"`
 	Created          time.Time `json:"created"`
 }
 
-const jobCols = `id,owner,source,provider_hash,directory_id,name,status,created_at,named_destination,provider_progress,provider_visible`
+const jobCols = `id,owner,source,provider_hash,directory_id,name,status,created_at,named_destination,provider_progress,provider_visible,result_id`
 
 func scanJob(row pgx.Row) (Job, error) {
 	var j Job
-	err := row.Scan(&j.ID, &j.Owner, &j.Source, &j.ProviderHash, &j.DirectoryID, &j.Name, &j.Status, &j.Created, &j.NamedDestination, &j.Progress, &j.ProviderVisible)
+	err := row.Scan(&j.ID, &j.Owner, &j.Source, &j.ProviderHash, &j.DirectoryID, &j.Name, &j.Status, &j.Created, &j.NamedDestination, &j.Progress, &j.ProviderVisible, &j.ResultID)
 	return j, err
 }
 

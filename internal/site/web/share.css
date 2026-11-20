@@ -1,0 +1,209 @@
+:root {
+  color: #132c27;
+  background: #edf4ef;
+  font:
+    16px/1.55 "Microsoft YaHei UI",
+    "PingFang SC",
+    system-ui,
+    sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100svh;
+  isolation: isolate;
+}
+[hidden] {
+  display: none !important;
+}
+.landscape {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+}
+.landscape img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 64%;
+}
+.landscape::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(#edf4ef8a, #c4dcc563 70%, #173d324d);
+}
+.share-header {
+  max-width: 1320px;
+  margin: auto;
+  padding: 1.3rem clamp(1rem, 5vw, 4rem);
+}
+.share-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: inherit;
+  font-size: 1.3rem;
+  font-weight: 750;
+  text-decoration: none;
+}
+.share-brand span {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.6rem;
+  background: #b8edcf;
+}
+.share-brand span::before {
+  content: "";
+  width: 1.05rem;
+  height: 0.66rem;
+  border-radius: 0.12rem;
+  background: #11634e;
+  box-shadow: -0.22rem -0.21rem 0 -0.13rem #11634e;
+}
+main {
+  width: min(100% - 2rem, 820px);
+  margin: clamp(1rem, 5vh, 3.2rem) auto 3rem;
+}
+.share-card {
+  overflow: hidden;
+  border: 1px solid #d4e4d8;
+  border-radius: 1.4rem;
+  background: #fffffff8;
+  box-shadow: 0 20px 60px #163c2d24;
+}
+.share-preview {
+  position: relative;
+  aspect-ratio: 16 / 6;
+  overflow: hidden;
+  background: #183b32;
+}
+.share-preview img,
+.share-preview video {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  object-fit: cover;
+}
+.share-preview video {
+  object-fit: contain;
+  background: #071814;
+}
+.play-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  width: 3.9rem;
+  height: 3.9rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #103e31ed;
+  border: 1px solid #d5eadd90;
+  cursor: pointer;
+}
+.play-button span {
+  width: 0;
+  height: 0;
+  margin-left: 0.28rem;
+  border-top: 0.62rem solid transparent;
+  border-bottom: 0.62rem solid transparent;
+  border-left: 1rem solid white;
+}
+.share-file {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.6rem;
+}
+.share-kind {
+  display: grid;
+  place-items: center;
+  padding: 0.4rem;
+  width: 3.15rem;
+  min-height: 3.15rem;
+  border-radius: 0.8rem;
+  background: #dff4e7;
+  color: #11634e;
+  font-weight: 750;
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+h1 {
+  margin: 0 0 0.25rem;
+  line-height: 1.25;
+  font-size: clamp(1.25rem, 3.5vw, 1.85rem);
+  overflow-wrap: anywhere;
+}
+p {
+  margin: 0;
+  color: #506e62;
+}
+.share-file-text span {
+  padding: 0 0.25rem;
+}
+.share-download {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.65rem;
+  background: #11634e;
+  color: white;
+  font-weight: 670;
+  text-decoration: none;
+  text-align: center;
+}
+.share-download:hover {
+  background: #0b513f;
+}
+.share-download:focus-visible,
+.play-button:focus-visible,
+.share-brand:focus-visible {
+  outline: 3px solid #78bfa0;
+  outline-offset: 3px;
+}
+footer {
+  padding: 0.9rem 1.6rem;
+  font-size: 0.88rem;
+  background: #edf5ef;
+  border-top: 1px solid #dbe8df;
+  color: #506e62;
+}
+#share-play-status {
+  padding: 0.75rem 1.6rem 0;
+}
+.share-unavailable {
+  padding: 2rem;
+}
+.share-unavailable .share-kind {
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+}
+.share-unavailable .share-download {
+  margin-top: 1.15rem;
+}
+@media (max-width: 600px) {
+  .share-preview {
+    aspect-ratio: 16 / 9;
+  }
+  .share-file {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.8rem;
+    padding: 1.1rem;
+  }
+  .share-file .share-download {
+    grid-column: 1 / -1;
+  }
+  footer {
+    padding-inline: 1.1rem;
+  }
+}
