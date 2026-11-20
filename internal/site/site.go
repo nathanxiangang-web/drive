@@ -35,6 +35,7 @@ type Site struct {
 	Store                                       *store.Store
 	Drive                                       *cloud.Native
 	Links                                       cloud.Links
+	playbackLinks                               playbackCache
 	Origin, PublicRoot, PrivateRoot, LegacyRoot string
 	searchKey                                   []byte
 	Connection                                  *cloud.Connection
@@ -355,9 +356,26 @@ func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
 	}
 	linkStarted := time.Now()
 	var target string
-	if playback {
-		n, _ := offset(q.Get("offset"))
-		target, err = s.publicPlaybackTarget(ctx, selected, n, r.UserAgent())
+	if q.Get("play") == "1" && mediaFile(selected.Item.Name) {
+		agent := r.UserAgent()
+		key := playbackKey{owner: a.ID, directory: selected.Base, parent: selected.Parent, id: selected.Item.ID, name: selected.Item.Name,
+			size: selected.Item.Size, agent: agent, source: s.Links.Connection.Revision()}
+		if selected.Item.Modified != nil {
+			key.modified = selected.Item.Modified.UnixNano()
+		}
+		refresh := q.Get("fresh")
+		if len(refresh) > 64 {
+			refresh = ""
+		}
+		var outcome string
+		target, outcome, err = s.playbackLinks.resolve(ctx, key, refresh, func(ctx context.Context) (string, error) {
+			if playback {
+				n, _ := offset(q.Get("offset"))
+				return s.publicPlaybackTarget(ctx, selected, n, agent)
+			}
+			return s.fileTarget(ctx, selected.Base, selected.Item, agent)
+		})
+		w.Header().Set("X-Playback-Cache", outcome)
 	} else {
 		target, err = s.fileTarget(ctx, selected.Base, selected.Item, r.UserAgent())
 	}

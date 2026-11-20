@@ -105,11 +105,11 @@ function fileURL(item) {
     })
   );
 }
-function playbackURL(item) {
-  if (!item.play_ref && !item.ref) return fileURL(item);
+function playbackURL(item, fresh = false) {
   const url = new URL(fileURL(item), location.origin);
   url.searchParams.set("play", "1");
   if (item.play_ref) url.searchParams.set("play_ref", item.play_ref);
+  if (fresh) url.searchParams.set("fresh", crypto.randomUUID());
   return url.pathname + url.search;
 }
 function resetPage() {
@@ -169,6 +169,7 @@ function showWorkspace(account) {
 }
 function show(view, locate = null) {
   if (view === "admin" && !state.admin) return;
+  workspacePlayer.stop();
   state.request++;
   state.view = view;
   state.parts = [];
@@ -208,6 +209,7 @@ function visibleParts(directory) {
   return parts;
 }
 function browse(directory) {
+  workspacePlayer.stop();
   state.directory = directory;
   state.parts = visibleParts(directory);
   state.rows = [];
@@ -248,6 +250,31 @@ function playable(item) {
   return videoTypes.has(ext) || audioTypes.has(ext);
 }
 
+let playbackHintTimer;
+let lastPlaybackHint = 0;
+function hintPlayback(button, item) {
+  const schedule = () => {
+    clearTimeout(playbackHintTimer);
+    playbackHintTimer = setTimeout(() => {
+      if (
+        Date.now() - lastPlaybackHint >= 1500 &&
+        button.isConnected &&
+        button.matches(":hover, :focus-visible") &&
+        !document.hidden &&
+        !el("player").open &&
+        !el("file-actions").open
+      ) {
+        lastPlaybackHint = Date.now();
+        workspacePlayer.prepare(playbackURL(item));
+      }
+    }, 350);
+  };
+  button.addEventListener("pointerenter", (event) => {
+    if (event.pointerType === "mouse") schedule();
+  });
+  button.addEventListener("focus", schedule);
+}
+
 function downloadLink(item, className = "") {
   const link = document.createElement("a");
   link.href = fileURL(item);
@@ -286,6 +313,7 @@ function renderFiles(items) {
         ? "▸"
         : (extension(item.name) || "文件").slice(0, 4).toUpperCase();
     open.className = "row-name";
+    if (playable(item)) hintPlayback(open, item);
     const label = document.createElement("span");
     label.textContent = item.name;
     open.replaceChildren(icon, label);
@@ -311,6 +339,7 @@ function renderFiles(items) {
     } else {
       if (playable(item)) {
         const play = action("播放", () => openFile(item));
+        hintPlayback(play, item);
         play.className = "inline-play ghost-button";
         ops.append(play);
       }
@@ -448,7 +477,8 @@ function openFile(item) {
   const video = el("video");
   video.hidden = !playable(item);
   el("player").showModal();
-  if (!video.hidden) workspacePlayer.start(playbackURL(item));
+  if (!video.hidden)
+    workspacePlayer.start(playbackURL(item), playbackURL(item, true));
 }
 
 function closePlayer() {
@@ -804,7 +834,7 @@ el("player-retry").addEventListener("click", async () => {
     state.file = item;
   }
   el("player-download").href = fileURL(item);
-  workspacePlayer.start(playbackURL(item));
+  workspacePlayer.start(playbackURL(item, true));
 });
 setInterval(() => {
   if (

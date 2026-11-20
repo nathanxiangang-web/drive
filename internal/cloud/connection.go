@@ -15,6 +15,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,6 +47,7 @@ type Connection struct {
 	store                 ConnectionStore
 	key                   cipher.AEAD
 	mu                    sync.Mutex
+	revision              atomic.Uint64
 	credentials           *OpenListCredentials
 	token                 string
 	reauthAt              time.Time
@@ -178,8 +180,11 @@ func (c *Connection) Configure(ctx context.Context, actor string, input OpenList
 	c.credentials = &input
 	c.token = token
 	c.reauthAt = time.Time{}
+	c.revision.Add(1)
 	return nil
 }
+
+func (c *Connection) Revision() uint64 { return c.revision.Load() }
 
 func (c *Connection) Token(ctx context.Context) (token, root string, err error) {
 	c.mu.Lock()
