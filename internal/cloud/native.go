@@ -149,16 +149,18 @@ func (n *Native) listID(ctx context.Context, id string, offset int) (Page, error
 func (n *Native) List(ctx context.Context, directory string, offset int, refresh bool) (Page, error) {
 	key := pageKey{directory, offset}
 	requested := time.Now()
+	if !refresh {
+		if page, ok := n.cachedListing(key, requested, false); ok {
+			return page, nil
+		}
+	}
 	release, err := n.acquire(ctx)
 	if err != nil {
 		return Page{}, err
 	}
 	defer release()
-	n.mu.Lock()
-	cached, ok := n.cache[key]
-	n.mu.Unlock()
-	if ok && ((!refresh && time.Since(cached.checked) < 20*time.Second) || (refresh && (cached.checked.After(requested) || time.Since(cached.checked) < 2*time.Second))) {
-		return cached.Page, nil
+	if page, ok := n.cachedListing(key, requested, refresh); ok {
+		return page, nil
 	}
 	id, err := n.dirID(ctx, directory)
 	if err != nil {
@@ -179,6 +181,23 @@ func (n *Native) List(ctx context.Context, directory string, offset int, refresh
 	n.cache[key] = cachedPage{page, time.Now()}
 	n.mu.Unlock()
 	return page, nil
+}
+
+func (n *Native) CachedList(directory string, offset int) (Page, bool) {
+	return n.cachedListing(pageKey{directory, offset}, time.Now(), false)
+}
+
+func (n *Native) cachedListing(key pageKey, requested time.Time, refresh bool) (Page, bool) {
+	n.mu.Lock()
+	cached, ok := n.cache[key]
+	n.mu.Unlock()
+	if !ok {
+		return Page{}, false
+	}
+	if refresh {
+		return cached.Page, cached.checked.After(requested) || time.Since(cached.checked) < 2*time.Second
+	}
+	return cached.Page, time.Since(cached.checked) < 20*time.Second
 }
 
 func (n *Native) LastDirectoryRead() LastRead {
@@ -291,11 +310,8 @@ func (n *Native) Start(ctx context.Context, source, directoryID string) (string,
 }
 
 func (n *Native) Tasks(ctx context.Context) ([]*driver.OfflineTask, bool, error) {
-	release, err := n.acquire(ctx)
-	if err != nil {
-		return nil, false, err
-	}
-	defer release()
+	// The worker polls serially. Its read-only status calls use the shared
+	// rate limiter, but a slow status page must not block browsing or playback.
 	var list []*driver.OfflineTask
 	var expectedCount int64
 	consistent := true

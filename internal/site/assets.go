@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"html"
 	"net/http"
 	"strconv"
 	"strings"
@@ -65,25 +66,35 @@ func (a asset) serve(w http.ResponseWriter, r *http.Request, policy string) {
 
 func (s *Site) webRoutes(mux *http.ServeMux) {
 	index, _ := assets.ReadFile("web/index.html")
-	html := string(index)
-	html = strings.ReplaceAll(html, "__REGISTRATION__", strconv.FormatBool(s.OpenRegistration))
+	indexHTML := string(index)
+	indexHTML = strings.ReplaceAll(indexHTML, "__REGISTRATION__", strconv.FormatBool(s.OpenRegistration))
+	indexHTML = strings.ReplaceAll(indexHTML, "__MEDIA_ORIGIN__", html.EscapeString(s.mediaOrigin()))
 	static := make(map[string]string)
 	for name, mime := range map[string]string{
 		"style.css": "text/css", "app.js": "text/javascript", "admin.js": "text/javascript", "admin-shares.js": "text/javascript",
-		"share.js": "text/javascript", "share-view.js": "text/javascript", "share.css": "text/css", "share-bg.webp": "image/webp",
+		"share.js": "text/javascript", "media.js": "text/javascript", "share-view.js": "text/javascript", "share.css": "text/css", "share-bg.webp": "image/webp",
 	} {
 		body, _ := assets.ReadFile("web/" + name)
 		a := newAsset(body, mime)
 		url := "/assets/" + a.hash + "/" + name
 		static[name] = url
-		html = strings.ReplaceAll(html, `"/`+name+`"`, `"`+url+`"`)
+		indexHTML = strings.ReplaceAll(indexHTML, `"/`+name+`"`, `"`+url+`"`)
 		mux.HandleFunc("GET "+url, func(w http.ResponseWriter, r *http.Request) {
 			a.serve(w, r, "public, max-age=31536000, immutable")
 		})
 	}
 	s.publicShareRoutes(mux, static)
-	page := newAsset([]byte(html), "text/html")
+	page := newAsset([]byte(indexHTML), "text/html")
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		page.serve(w, r, "no-cache")
 	})
+}
+
+func (s *Site) mediaOrigin() string {
+	if len(s.Links.Hosts) == 1 {
+		for host := range s.Links.Hosts {
+			return "https://" + host
+		}
+	}
+	return ""
 }

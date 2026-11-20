@@ -6,9 +6,10 @@
     <meta name="robots" content="noindex,nofollow,noarchive" />
     <title>{{if .Available}}{{.Name}} · Drive 文件分享{{else}}分享链接 · Drive{{end}}</title>
     <link rel="stylesheet" href="{{.Style}}" />
+    <script src="{{.MediaScript}}" defer></script>
     <script src="{{.Script}}" defer></script>
   </head>
-  <body class="share-page">
+  <body class="share-page" data-media-origin="{{.MediaOrigin}}">
     <div class="landscape" aria-hidden="true">
       <img src="{{.Background}}" alt="" fetchpriority="high" />
     </div>
@@ -22,7 +23,7 @@
           <button id="share-play" class="play-button" type="button" data-url="{{.Download}}" aria-label="播放文件"><span aria-hidden="true"></span></button>
           <video id="shared-video" hidden controls playsinline preload="none"></video>
         </div>
-        <p id="share-play-status" role="status" hidden>视频暂时无法播放，可下载到设备。</p>
+        <p id="share-play-status" role="status" hidden></p>
         {{end}}
         <div class="share-file">
           <div class="share-kind" aria-hidden="true">{{.Format}}</div>

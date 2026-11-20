@@ -5,12 +5,16 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Drive · 文件与云下载</title>
     <link rel="stylesheet" href="/style.css" />
+    <script src="/media.js" defer></script>
     <script src="/app.js" defer></script>
     <script src="/admin.js" defer></script>
     <script src="/share.js" defer></script>
     <script src="/admin-shares.js" defer></script>
   </head>
-  <body data-registration="__REGISTRATION__">
+  <body
+    data-registration="__REGISTRATION__"
+    data-media-origin="__MEDIA_ORIGIN__"
+  >
     <main id="app-start" class="signin">
       <div class="login-card">
         <h1>Drive</h1>
@@ -406,10 +410,10 @@
         <h2 id="player-name"></h2>
         <button id="player-close" type="button">返回列表</button>
       </header>
-      <video id="video" controls playsinline preload="metadata"></video>
-      <p id="player-error" role="status" hidden>
-        视频暂时无法播放，可刷新播放地址或下载到设备。
-      </p>
+      <div class="player-media">
+        <video id="video" controls playsinline preload="none"></video>
+        <p id="player-status" class="player-status" role="status" hidden></p>
+      </div>
       <div class="preview-meta">
         <p id="player-meta"></p>
         <div class="row-ops">

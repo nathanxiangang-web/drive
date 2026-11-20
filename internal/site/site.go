@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -284,6 +285,15 @@ func (s *Site) files(w http.ResponseWriter, r *http.Request, a store.Account) {
 		return
 	}
 	page.Offset = n
+	if area == "public" || area == "" {
+		expires := time.Now().Add(10 * time.Minute).Unix()
+		for i := range page.Items {
+			item := &page.Items[i]
+			if item.Ref == "" && !item.Directory && mediaFile(item.Name) {
+				item.PlayRef = s.signSearch(searchRef{a.ID, "public", item.Dir, item.parent, item.Item, expires})
+			}
+		}
+	}
 	respond(w, 200, page)
 }
 
@@ -342,16 +352,30 @@ func (s *Site) selectFile(ctx context.Context, a store.Account, q url.Values) (f
 func (s *Site) file(w http.ResponseWriter, r *http.Request, a store.Account) {
 	ctx, cancel := context.WithTimeout(r.Context(), 22*time.Second)
 	defer cancel()
-	selected, err := s.selectFile(ctx, a, r.URL.Query())
+	started := time.Now()
+	q := r.URL.Query()
+	selected, playback := s.usePlaybackRef(ctx, a, q)
+	var err error
+	if !playback {
+		selected, err = s.selectFile(ctx, a, q)
+		if err != nil {
+			fileFailure(w, err)
+			return
+		}
+	}
+	linkStarted := time.Now()
+	var target string
+	if playback {
+		n, _ := offset(q.Get("offset"))
+		target, err = s.publicPlaybackTarget(ctx, selected, n, r.UserAgent())
+	} else {
+		target, err = s.fileTarget(ctx, selected.Base, selected.Item, r.UserAgent())
+	}
 	if err != nil {
 		fileFailure(w, err)
 		return
 	}
-	target, err := s.fileTarget(ctx, selected.Base, selected.Item, r.UserAgent())
-	if err != nil {
-		fileFailure(w, err)
-		return
-	}
+	w.Header().Set("Server-Timing", fmt.Sprintf("selection;dur=%d, link;dur=%d", linkStarted.Sub(started).Milliseconds(), time.Since(linkStarted).Milliseconds()))
 	w.Header().Set("Location", target)
 	w.WriteHeader(http.StatusFound)
 }

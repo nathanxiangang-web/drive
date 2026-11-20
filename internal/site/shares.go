@@ -118,20 +118,21 @@ func (s *Site) revokeShare(w http.ResponseWriter, r *http.Request, a store.Accou
 type shareView struct {
 	Name, Format, Size, Expires, ExpiresISO string
 	Style, Script, Background, Download     string
+	MediaOrigin, MediaScript                string
 	Message, Hint, Back                     string
 	Unlock                                  string
 	Available, Playable                     bool
 }
 
 type sharedPages struct {
-	site                      *Site
-	page                      *template.Template
-	style, script, background string
+	site                                   *Site
+	page                                   *template.Template
+	style, script, mediaScript, background string
 }
 
 func (s *Site) publicShareRoutes(mux *http.ServeMux, static map[string]string) {
 	p := sharedPages{site: s, page: template.Must(template.ParseFS(assets, "web/share.html")),
-		style: static["share.css"], script: static["share-view.js"], background: static["share-bg.webp"]}
+		style: static["share.css"], script: static["share-view.js"], mediaScript: static["media.js"], background: static["share-bg.webp"]}
 	mux.HandleFunc("GET /s/{token}", p.open)
 	mux.HandleFunc("GET /s/{token}/download", p.download)
 	mux.HandleFunc("POST /s/{token}/unlock", p.unlock)
@@ -139,6 +140,10 @@ func (s *Site) publicShareRoutes(mux *http.ServeMux, static map[string]string) {
 
 func (p sharedPages) render(w http.ResponseWriter, code int, view shareView) {
 	view.Style, view.Script, view.Background = p.style, p.script, p.background
+	view.MediaScript = p.mediaScript
+	if view.Playable {
+		view.MediaOrigin = p.site.mediaOrigin()
+	}
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")
 	var result bytes.Buffer
 	if p.page.ExecuteTemplate(&result, "share.html", view) != nil {
@@ -194,15 +199,10 @@ func (p sharedPages) open(w http.ResponseWriter, r *http.Request) {
 		zone = time.FixedZone("CST", 8*60*60)
 	}
 	ext := strings.ToUpper(strings.TrimPrefix(path.Ext(share.Name), "."))
-	playable := false
-	switch ext {
-	case "MP4", "WEBM", "MOV", "M4V", "MKV", "AVI", "MP3", "M4A", "OGG", "WAV", "FLAC":
-		playable = true
-	}
 	if ext == "" || len(ext) > 10 {
 		ext = "文件"
 	}
-	p.render(w, 200, shareView{Name: share.Name, Format: ext, Size: shareSize(share.Size), Available: true, Playable: playable,
+	p.render(w, 200, shareView{Name: share.Name, Format: ext, Size: shareSize(share.Size), Available: true, Playable: mediaFile(share.Name),
 		Expires: share.Expires.In(zone).Format("2006-01-02 15:04"), ExpiresISO: share.Expires.Format(time.RFC3339),
 		Download: "/s/" + share.Token + "/download"})
 }
@@ -235,18 +235,14 @@ func (p sharedPages) download(w http.ResponseWriter, r *http.Request) {
 			err = cloud.Missing
 		}
 	}
+	var target string
 	if err == nil {
-		err = p.site.Drive.CheckFile(ctx, item, share.Parent)
+		target, err = p.site.checkedFileTarget(ctx, fileSelection{Item: item, Base: base, Parent: share.Parent}, r.UserAgent())
 	}
 	if errors.Is(err, cloud.Missing) {
 		p.invalid(w)
 		return
 	}
-	if err != nil {
-		p.unavailable(w, share.Token)
-		return
-	}
-	target, err := p.site.fileTarget(ctx, base, item, r.UserAgent())
 	if err != nil {
 		p.unavailable(w, share.Token)
 		return
