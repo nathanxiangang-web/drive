@@ -123,6 +123,8 @@ function showLogin() {
   el("password-visible").setAttribute("aria-pressed", "false");
   el("password-visible").textContent = "显示密码";
   state.tasks = [];
+  state.filter = "all";
+  state.rows = [];
   state.drafts.clear();
   el("login").hidden = false;
   el("login-form").hidden = false;
@@ -168,8 +170,8 @@ function show(view, locate = null) {
   clearSearch();
   state.locate = locate;
   if (locate?.keyword) {
-    state.keyword = locate.keyword;
-    el("search-keyword").value = locate.keyword;
+    state.keyword = locate.keyword.slice(0, 100);
+    el("search-keyword").value = state.keyword;
   }
   resetPage();
   el("account-menu").open = false;
@@ -273,6 +275,9 @@ function renderFiles(items) {
         ? "▸"
         : (extension(item.name) || "文件").slice(0, 4).toUpperCase();
     open.className = "row-name";
+    const label = document.createElement("span");
+    label.textContent = item.name;
+    open.replaceChildren(icon, label);
     const name = document.createElement("div");
     name.className = "file-name";
     name.append(open);
@@ -285,8 +290,6 @@ function renderFiles(items) {
         name.append(location);
       }
     }
-    const first = cell(name);
-    first.prepend(icon);
     const ops = document.createElement("div");
     ops.className = "row-ops file-row-ops";
     if (item.directory) {
@@ -306,7 +309,7 @@ function renderFiles(items) {
       ops.append(more);
     }
     row.append(
-      first,
+      cell(name),
       cell(item.directory ? "—" : size(item.size)),
       cell(item.modified ? dateFormat.format(new Date(item.modified)) : "—"),
       cell(ops),

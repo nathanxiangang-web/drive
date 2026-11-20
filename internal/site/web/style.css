@@ -566,6 +566,14 @@ video {
   background: #f7ebcf;
   color: #78531c;
 }
+.row-icon.folder::before {
+  content: "";
+  width: 17px;
+  height: 11px;
+  border-radius: 2px;
+  background: #976b28;
+  box-shadow: -4px -5px 0 -3px #976b28;
+}
 .row-icon.media {
   background: #eeeafb;
   color: #5b418e;
