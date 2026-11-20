@@ -264,6 +264,18 @@ video {
 }
 .player-media {
   position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 68dvh;
+  background: #172326;
+}
+.player-media video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
 }
 .player-media:has(video[hidden]) {
   display: none;

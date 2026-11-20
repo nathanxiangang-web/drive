@@ -213,7 +213,14 @@ footer {
   color: #a63238;
 }
 #share-play-status {
-  padding: 0.75rem 1.6rem 0;
+  position: absolute;
+  inset: auto 0 46px;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  text-align: center;
+  color: white;
+  background: #071814bf;
+  pointer-events: none;
 }
 .share-unavailable {
   padding: 2rem;
