@@ -18,12 +18,12 @@ type AdminShare struct {
 }
 
 func (s *Store) AdminShares(ctx context.Context, admin, query string, offset int) ([]AdminShare, bool, error) {
-	rows, err := s.db.Query(ctx, `SELECT s.token,s.file_name,s.file_size,s.expires_at,s.revoked_at,s.access_code,
+	rows, err := s.db.Query(ctx, `SELECT s.public_token,s.file_name,s.file_size,s.expires_at,s.revoked_at,s.access_code,
 a.login,s.created_at,(s.revoked_at IS NULL AND s.expires_at>now() AND a.enabled)
 FROM drive_shares s JOIN drive_accounts a ON a.id=s.owner
 WHERE EXISTS(SELECT 1 FROM drive_accounts WHERE id=$1 AND role='admin' AND enabled)
 AND ($2='' OR strpos(lower(a.login),lower($2))>0 OR strpos(lower(s.file_name),lower($2))>0)
-ORDER BY s.created_at DESC,s.token LIMIT $3 OFFSET $4`, admin, query, AdminSharePageSize+1, offset)
+ORDER BY s.created_at DESC,s.public_token LIMIT $3 OFFSET $4`, admin, query, AdminSharePageSize+1, offset)
 	if err != nil {
 		return nil, false, err
 	}
@@ -52,15 +52,15 @@ func (s *Store) AdminShareCode(ctx context.Context, admin, token, input string) 
 		return Share{}, InvalidShareCode
 	}
 	var share Share
-	// Upgrade a legacy link by replacing its token. A previous binary
-	// accepts 64-character tokens only, so rolling back cannot expose
-	// a share that has begun requiring a code.
+	// Keep the public address when protecting a legacy share. Move its old
+	// token out of the column read by versions that predate code checks.
 	err := s.db.QueryRow(ctx, `UPDATE drive_shares SET
+legacy_token=CASE WHEN code_version=0 THEN public_token ELSE legacy_token END,
 token=CASE WHEN code_version=0 THEN $4 ELSE token END,access_code=$3,code_version=code_version+1,
 failed_codes=0,code_window_end=NULL
-WHERE token=$2 AND revoked_at IS NULL AND expires_at>now()
+WHERE public_token=$2 AND revoked_at IS NULL AND expires_at>now()
 AND EXISTS(SELECT 1 FROM drive_accounts WHERE id=$1 AND role='admin' AND enabled)
-RETURNING token,access_code,file_name,file_size,expires_at`, admin, token, code, shortShareToken()).
+RETURNING public_token,access_code,file_name,file_size,expires_at`, admin, token, code, shortShareToken()).
 		Scan(&share.Token, &share.Code, &share.Name, &share.Size, &share.Expires)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Share{}, ShareMissing
@@ -70,7 +70,7 @@ RETURNING token,access_code,file_name,file_size,expires_at`, admin, token, code,
 
 func (s *Store) AdminRevokeShare(ctx context.Context, admin, token string) error {
 	tag, err := s.db.Exec(ctx, `UPDATE drive_shares SET revoked_at=COALESCE(revoked_at,now())
-WHERE token=$2 AND EXISTS(SELECT 1 FROM drive_accounts WHERE id=$1 AND role='admin' AND enabled)`, admin, token)
+WHERE public_token=$2 AND EXISTS(SELECT 1 FROM drive_accounts WHERE id=$1 AND role='admin' AND enabled)`, admin, token)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ShareMissing
 	}

@@ -24,6 +24,10 @@ ALTER TABLE drive_shares ADD COLUMN IF NOT EXISTS access_code text NOT NULL DEFA
 ALTER TABLE drive_shares ADD COLUMN IF NOT EXISTS code_version bigint NOT NULL DEFAULT 0;
 ALTER TABLE drive_shares ADD COLUMN IF NOT EXISTS failed_codes integer NOT NULL DEFAULT 0;
 ALTER TABLE drive_shares ADD COLUMN IF NOT EXISTS code_window_end timestamptz;
+ALTER TABLE drive_shares ADD COLUMN IF NOT EXISTS legacy_token text NOT NULL DEFAULT '';
+ALTER TABLE drive_shares ADD COLUMN IF NOT EXISTS public_token text
+  GENERATED ALWAYS AS (COALESCE(NULLIF(legacy_token,''),token)) STORED;
+CREATE UNIQUE INDEX IF NOT EXISTS drive_shares_public_token ON drive_shares(public_token);
 CREATE INDEX IF NOT EXISTS drive_shares_by_owner ON drive_shares(owner,file_id,created_at DESC);`
 
 type Share struct {
@@ -60,7 +64,7 @@ RETURNING expires_at`, share.Token, share.Owner, share.Area, share.Dir, share.Pa
 }
 
 func (s *Store) Shares(ctx context.Context, owner, fileID string) ([]Share, error) {
-	rows, err := s.db.Query(ctx, `SELECT token,file_name,file_size,expires_at,revoked_at,access_code FROM drive_shares
+	rows, err := s.db.Query(ctx, `SELECT public_token,file_name,file_size,expires_at,revoked_at,access_code FROM drive_shares
 WHERE owner=$1 AND file_id=$2 ORDER BY created_at DESC LIMIT 100`, owner, fileID)
 	if err != nil {
 		return nil, err
@@ -79,9 +83,9 @@ WHERE owner=$1 AND file_id=$2 ORDER BY created_at DESC LIMIT 100`, owner, fileID
 
 func (s *Store) PublicShare(ctx context.Context, token string) (Share, error) {
 	var share Share
-	err := s.db.QueryRow(ctx, `SELECT s.token,s.owner,s.area,s.dir,s.parent_id,s.file_id,s.file_name,s.file_size,s.expires_at,s.code_version
+	err := s.db.QueryRow(ctx, `SELECT s.public_token,s.owner,s.area,s.dir,s.parent_id,s.file_id,s.file_name,s.file_size,s.expires_at,s.code_version
 FROM drive_shares s JOIN drive_accounts a ON a.id=s.owner
-WHERE s.token=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND a.enabled`, token).
+WHERE s.public_token=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND a.enabled`, token).
 		Scan(&share.Token, &share.Owner, &share.Area, &share.Dir, &share.Parent, &share.FileID, &share.Name, &share.Size, &share.Expires, &share.CodeVersion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Share{}, ShareMissing
@@ -90,7 +94,7 @@ WHERE s.token=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND a.enabled`,
 }
 
 func (s *Store) RevokeShare(ctx context.Context, owner, token string) error {
-	tag, err := s.db.Exec(ctx, `UPDATE drive_shares SET revoked_at=COALESCE(revoked_at,now()) WHERE owner=$1 AND token=$2`, owner, token)
+	tag, err := s.db.Exec(ctx, `UPDATE drive_shares SET revoked_at=COALESCE(revoked_at,now()) WHERE owner=$1 AND public_token=$2`, owner, token)
 	if err == nil && tag.RowsAffected() == 0 {
 		return ShareMissing
 	}

@@ -82,9 +82,8 @@ function editAdminShare(item) {
   el("admin-share-file").textContent = item.name;
   el("admin-share-code").value = item.code || "";
   el("admin-share-edit-status").textContent = "";
-  el("admin-share-hint").textContent = item.code
-    ? "保存后，接收者需使用新提取码重新验证。"
-    : "旧链接将失效。请把更新后的短链接和提取码发给接收者。";
+  el("admin-share-hint").textContent =
+    "保存后，原链接仍可使用。请把新提取码发给接收者，他们需要重新验证。";
   adminShareEditor.showModal();
 }
 
@@ -115,9 +114,7 @@ el("admin-share-form").addEventListener("submit", async (event) => {
     adminShareEditor.close();
     await loadAdminShares();
     if (state.admin)
-      el("admin-share-status").textContent = item.code
-        ? "提取码已更新"
-        : "已换发带提取码的短链接";
+      el("admin-share-status").textContent = "提取码已保存，原链接仍可使用";
   } catch (error) {
     if (editingShare === item)
       el("admin-share-edit-status").textContent = error.message;

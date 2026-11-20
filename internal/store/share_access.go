@@ -67,7 +67,7 @@ func (s *Store) UnlockShare(ctx context.Context, token, code string) (int64, err
 	err = tx.QueryRow(ctx, `SELECT s.access_code,s.code_version,
 CASE WHEN s.code_window_end>now() THEN s.failed_codes ELSE 0 END
 FROM drive_shares s JOIN drive_accounts a ON a.id=s.owner
-WHERE s.token=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND a.enabled FOR UPDATE OF s`, token).
+WHERE s.public_token=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND a.enabled FOR UPDATE OF s`, token).
 		Scan(&expected, &version, &failed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, ShareMissing
@@ -85,7 +85,7 @@ WHERE s.token=$1 AND s.revoked_at IS NULL AND s.expires_at>now() AND a.enabled F
 		return version, nil
 	}
 	_, err = tx.Exec(ctx, `UPDATE drive_shares SET failed_codes=$2,
-code_window_end=CASE WHEN $2=1 THEN now()+interval '10 min' ELSE code_window_end END WHERE token=$1`, token, failed+1)
+code_window_end=CASE WHEN $2=1 THEN now()+interval '10 min' ELSE code_window_end END WHERE public_token=$1`, token, failed+1)
 	if err != nil {
 		return 0, err
 	}
