@@ -69,7 +69,7 @@ func (s *Site) webRoutes(mux *http.ServeMux) {
 	html = strings.ReplaceAll(html, "__REGISTRATION__", strconv.FormatBool(s.OpenRegistration))
 	static := make(map[string]string)
 	for name, mime := range map[string]string{
-		"style.css": "text/css", "app.js": "text/javascript", "admin.js": "text/javascript",
+		"style.css": "text/css", "app.js": "text/javascript", "admin.js": "text/javascript", "admin-shares.js": "text/javascript",
 		"share.js": "text/javascript", "share-view.js": "text/javascript", "share.css": "text/css", "share-bg.webp": "image/webp",
 	} {
 		body, _ := assets.ReadFile("web/" + name)

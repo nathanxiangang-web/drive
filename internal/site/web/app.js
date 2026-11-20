@@ -135,6 +135,7 @@ function showLogin() {
   el("file-rows").classList.remove("skeleton");
   el("task-rows").replaceChildren();
   el("user-rows").replaceChildren();
+  if (typeof resetAdminShares === "function") resetAdminShares();
   el("status-grid").replaceChildren();
   el("new-user-form").reset();
   el("user-filter").reset();
@@ -154,7 +155,7 @@ function showWorkspace(account) {
   el("login").hidden = true;
   el("workspace").hidden = false;
   show(state.admin && account.setup ? "admin" : "public");
-  if (state.admin && account.setup) selectAdminPanel("openlist");
+  if (state.admin) selectAdminPanel(account.setup ? "openlist" : "users");
   request("/api/tasks")
     .then(updateTaskBadge)
     .catch(() => {});

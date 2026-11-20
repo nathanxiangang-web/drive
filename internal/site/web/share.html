@@ -34,6 +34,17 @@
         </div>
         <footer>有效期至 <time datetime="{{.ExpiresISO}}">{{.Expires}}（北京时间）</time></footer>
       </article>
+      {{else if .Unlock}}
+      <article class="share-card share-unavailable share-locked">
+        <h1>请输入提取码</h1>
+        <p>输入分享者提供的 4 位提取码即可打开文件。</p>
+        <form action="{{.Unlock}}" method="post" class="unlock-form">
+          <label for="unlock-code">提取码</label>
+          <input id="unlock-code" name="code" type="text" required pattern="[A-Za-z0-9]{4}" minlength="4" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+          {{if .Message}}<p class="unlock-error" role="alert">{{.Message}}</p>{{end}}
+          <button class="share-download" type="submit">打开分享</button>
+        </form>
+      </article>
       {{else}}
       <article class="share-card share-unavailable">
         <span class="share-kind" aria-hidden="true">↗</span>

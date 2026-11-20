@@ -7,6 +7,23 @@ function shareLink(token) {
   return location.origin + "/s/" + token;
 }
 
+async function presetShareCode() {
+  const current = sharing;
+  const input = el("share-code");
+  const before = input.value;
+  const button = el("share-randomize");
+  button.disabled = true;
+  try {
+    const { code } = await request("/api/shares/code");
+    if (sharing === current && input.value === before) input.value = code;
+  } catch {
+    if (sharing === current)
+      el("share-status").textContent = "无法随机生成，可手动填写提取码。";
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function showShare(item, records = false) {
   const query = Object.fromEntries(
     new URL(fileURL(item), location.origin).searchParams,
@@ -20,22 +37,27 @@ function showShare(item, records = false) {
   el("share-status").textContent = "";
   el("share-result").hidden = true;
   el("share-setup").hidden = records;
+  el("share-code").value = "";
   el("share-records").hidden = !records;
   el("share-record-list").replaceChildren();
   shareDialog.showModal();
   if (records) loadShareRecords();
+  else {
+    el("share-days").value = "7";
+    presetShareCode();
+  }
 }
 
-async function copyShare(value, button) {
+async function copyShare(url, code, button) {
   try {
-    await navigator.clipboard.writeText(value);
+    await navigator.clipboard.writeText(code ? url + "\n提取码：" + code : url);
     button.textContent = "已复制";
   } catch {
-    if (!el("share-result").hidden && el("share-url").value === value) {
+    if (!el("share-result").hidden && el("share-url").value === url) {
       el("share-url").focus();
       el("share-url").select();
     }
-    el("share-status").textContent = "无法自动复制。可打开链接后从地址栏复制。";
+    el("share-status").textContent = "无法自动复制，可手动复制链接和提取码。";
   }
 }
 
@@ -60,11 +82,14 @@ async function loadShareRecords() {
           : "已到期";
       row.append(text);
       if (live) {
+        if (record.code) text.textContent += " · 提取码 " + record.code;
         link.href = shareLink(record.token);
         link.target = "_blank";
         link.rel = "noreferrer";
         link.textContent = "打开";
-        const copy = action("复制", () => copyShare(link.href, copy));
+        const copy = action("复制", () =>
+          copyShare(link.href, record.code, copy),
+        );
         row.append(
           link,
           copy,
@@ -113,13 +138,15 @@ el("share-form").addEventListener("submit", async (event) => {
     const share = await post("/api/shares", {
       ...current.query,
       days: Number(el("share-days").value),
+      code: el("share-code").value,
     });
     if (sharing !== current) return;
     const url = shareLink(share.token);
     el("share-url").value = url;
+    el("share-code-value").textContent = share.code;
     el("share-open").href = url;
     el("share-expiration").textContent = "有效期至 " + timestamp(share.expires);
-    el("share-copy").textContent = "复制链接";
+    el("share-copy").textContent = "复制链接和提取码";
     el("share-result").hidden = false;
     el("share-setup").hidden = true;
     el("share-status").textContent = "链接已创建";
@@ -133,13 +160,20 @@ el("share-form").addEventListener("submit", async (event) => {
 });
 
 el("share-copy").addEventListener("click", () =>
-  copyShare(el("share-url").value, el("share-copy")),
+  copyShare(
+    el("share-url").value,
+    el("share-code-value").textContent,
+    el("share-copy"),
+  ),
 );
+el("share-randomize").addEventListener("click", presetShareCode);
 el("share-close").addEventListener("click", () => shareDialog.close());
 el("share-cancel").addEventListener("click", () => shareDialog.close());
 shareDialog.addEventListener("close", () => {
   sharing = null;
   el("share-url").value = "";
+  el("share-code").value = "";
+  el("share-code-value").textContent = "";
   el("share-open").removeAttribute("href");
   el("share-record-list").replaceChildren();
 });

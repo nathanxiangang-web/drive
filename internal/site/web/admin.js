@@ -244,6 +244,7 @@ function selectAdminPanel(name) {
     pane.hidden = pane.dataset.adminPanel !== name;
   for (const button of el("admin-tabs").querySelectorAll("button"))
     button.setAttribute("aria-pressed", String(button.dataset.panel === name));
+  if (name === "shares") loadAdminShares();
 }
 el("admin-tabs").addEventListener("click", (event) => {
   if (event.target.dataset.panel) selectAdminPanel(event.target.dataset.panel);

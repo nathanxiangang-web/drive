@@ -18,19 +18,28 @@ import (
 	"github.com/nathanxiangang-web/drive/internal/store"
 )
 
-var shareToken = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var shareToken = regexp.MustCompile(`^(?:[A-Za-z0-9_-]{16}|[0-9a-f]{64})$`)
 var providerFileID = regexp.MustCompile(`^[0-9]{1,32}$`)
 
 func (s *Site) createShare(w http.ResponseWriter, r *http.Request, a store.Account) {
 	var input struct {
 		Area, Dir, Offset, ID, Ref string
 		Days                       int
+		Code                       string
 	}
 	if !body(w, r, &input) {
 		return
 	}
 	if input.Days != 1 && input.Days != 7 && input.Days != 30 {
 		problem(w, 400, "请选择 1、7 或 30 天有效期")
+		return
+	}
+	if input.Code == "" {
+		input.Code = store.RandomShareCode()
+	}
+	code, ok := store.ShareCode(input.Code)
+	if !ok {
+		problem(w, 400, store.InvalidShareCode.Error())
 		return
 	}
 	q := url.Values{"area": {input.Area}, "dir": {input.Dir}, "offset": {input.Offset}, "id": {input.ID}, "ref": {input.Ref}}
@@ -45,12 +54,18 @@ func (s *Site) createShare(w http.ResponseWriter, r *http.Request, a store.Accou
 		return
 	}
 	result, err := s.Store.CreateShare(ctx, store.Share{Owner: a.ID, Area: selected.Area, Dir: selected.Dir,
-		Parent: selected.Parent, FileID: selected.Item.ID, Name: selected.Item.Name, Size: selected.Item.Size}, input.Days)
+		Parent: selected.Parent, FileID: selected.Item.ID, Name: selected.Item.Name, Size: selected.Item.Size, Code: code}, input.Days)
 	if err != nil {
 		problem(w, 503, "暂时无法创建分享")
 		return
 	}
 	respond(w, 201, result)
+}
+
+func (s *Site) newShareCode(w http.ResponseWriter, _ *http.Request, _ store.Account) {
+	respond(w, 200, struct {
+		Code string `json:"code"`
+	}{store.RandomShareCode()})
 }
 
 func (s *Site) listShares(w http.ResponseWriter, r *http.Request, a store.Account) {
@@ -73,22 +88,16 @@ func (s *Site) revokeShare(w http.ResponseWriter, r *http.Request, a store.Accou
 		problem(w, 404, store.ShareMissing.Error())
 		return
 	}
-	err := s.Store.RevokeShare(r.Context(), a.ID, token)
-	if errors.Is(err, store.ShareMissing) {
-		problem(w, 404, err.Error())
-		return
+	if !shareMutationError(w, s.Store.RevokeShare(r.Context(), a.ID, token)) {
+		w.WriteHeader(http.StatusNoContent)
 	}
-	if err != nil {
-		problem(w, 503, "暂时无法撤销分享")
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 type shareView struct {
 	Name, Format, Size, Expires, ExpiresISO string
 	Style, Script, Background, Download     string
 	Message, Hint, Back                     string
+	Unlock                                  string
 	Available, Playable                     bool
 }
 
@@ -103,6 +112,7 @@ func (s *Site) publicShareRoutes(mux *http.ServeMux, static map[string]string) {
 		style: static["share.css"], script: static["share-view.js"], background: static["share-bg.webp"]}
 	mux.HandleFunc("GET /s/{token}", p.open)
 	mux.HandleFunc("GET /s/{token}/download", p.download)
+	mux.HandleFunc("POST /s/{token}/unlock", p.unlock)
 }
 
 func (p sharedPages) render(w http.ResponseWriter, code int, view shareView) {
@@ -130,7 +140,7 @@ func (p sharedPages) unavailable(w http.ResponseWriter, token string) {
 	p.render(w, 503, shareView{Message: "文件暂时无法打开", Hint: "网盘没有返回可用链接，请稍后重试。", Back: back})
 }
 
-func (p sharedPages) usable(w http.ResponseWriter, r *http.Request) (store.Share, bool) {
+func (p sharedPages) usable(w http.ResponseWriter, r *http.Request, lockedStatus int) (store.Share, bool) {
 	token := r.PathValue("token")
 	if !shareToken.MatchString(token) {
 		p.invalid(w)
@@ -145,11 +155,15 @@ func (p sharedPages) usable(w http.ResponseWriter, r *http.Request) (store.Share
 		p.unavailable(w, token)
 		return store.Share{}, false
 	}
+	if !p.hasAccess(r, share) {
+		p.locked(w, token, lockedStatus, "")
+		return store.Share{}, false
+	}
 	return share, true
 }
 
 func (p sharedPages) open(w http.ResponseWriter, r *http.Request) {
-	share, ok := p.usable(w, r)
+	share, ok := p.usable(w, r, http.StatusOK)
 	if !ok {
 		return
 	}
@@ -172,7 +186,7 @@ func (p sharedPages) open(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p sharedPages) download(w http.ResponseWriter, r *http.Request) {
-	share, ok := p.usable(w, r)
+	share, ok := p.usable(w, r, http.StatusForbidden)
 	if !ok {
 		return
 	}
@@ -215,8 +229,8 @@ func (p sharedPages) download(w http.ResponseWriter, r *http.Request) {
 		p.unavailable(w, share.Token)
 		return
 	}
-	// Recheck expiration or revocation after the provider request.
-	if _, ok := p.usable(w, r); !ok {
+	// Recheck expiration, revocation and code changes after the provider request.
+	if _, ok := p.usable(w, r, http.StatusForbidden); !ok {
 		return
 	}
 	w.Header().Set("X-Robots-Tag", "noindex, nofollow, noarchive")

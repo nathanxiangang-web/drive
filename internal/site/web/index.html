@@ -8,6 +8,7 @@
     <script src="/app.js" defer></script>
     <script src="/admin.js" defer></script>
     <script src="/share.js" defer></script>
+    <script src="/admin-shares.js" defer></script>
   </head>
   <body data-registration="__REGISTRATION__">
     <main id="login" class="signin" hidden>
@@ -203,6 +204,9 @@
             <button type="button" data-panel="users" aria-pressed="true">
               用户管理
             </button>
+            <button type="button" data-panel="shares" aria-pressed="false">
+              分享管理
+            </button>
             <button type="button" data-panel="openlist" aria-pressed="false">
               网盘接入
             </button>
@@ -210,6 +214,40 @@
               站点状态
             </button>
           </nav>
+          <div class="admin-panel" data-admin-panel="shares" hidden>
+            <form id="admin-share-filter" class="file-search" role="search">
+              <label for="admin-share-query">按账号或文件名查找</label>
+              <div>
+                <input id="admin-share-query" type="search" maxlength="120" />
+                <button type="submit">查找</button>
+              </div>
+            </form>
+            <p id="admin-share-status" class="status" role="status"></p>
+            <div class="table-scroll">
+              <table class="admin-share-table">
+                <thead>
+                  <tr>
+                    <th>文件</th>
+                    <th>分享者</th>
+                    <th>提取码</th>
+                    <th>有效期</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-share-rows"></tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <button id="admin-share-prev" type="button" disabled>
+                上一页
+              </button>
+              <span id="admin-share-page">第 1 页</span>
+              <button id="admin-share-next" type="button" disabled>
+                下一页
+              </button>
+            </div>
+          </div>
           <div data-admin-panel="status" hidden>
             <div class="table-tools">
               <h2>网站与服务器</h2>
@@ -440,7 +478,25 @@
             <option value="7" selected>7 天</option>
             <option value="30">30 天</option>
           </select>
-          <p class="form-meta">持链接者可打开此文件。</p>
+          <div class="share-code-field">
+            <label for="share-code">提取码</label>
+            <div class="row-ops">
+              <input
+                id="share-code"
+                type="text"
+                required
+                pattern="[A-Za-z0-9]{4}"
+                minlength="4"
+                maxlength="4"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button id="share-randomize" type="button">随机生成</button>
+            </div>
+          </div>
+          <p class="form-meta">
+            4 位英文字母或数字。接收者打开链接后需输入提取码。
+          </p>
           <div class="row-ops">
             <button id="share-cancel" type="button">取消</button
             ><button class="primary" type="submit">创建链接</button>
@@ -450,9 +506,14 @@
       <p id="share-status" class="status" role="status"></p>
       <div id="share-result" hidden>
         <input id="share-url" type="url" readonly aria-label="分享链接" />
+        <p>
+          提取码
+          <strong id="share-code-value" class="share-code-value"></strong>
+        </p>
         <p id="share-expiration" class="form-meta"></p>
         <div class="row-ops">
-          <button id="share-copy" type="button" class="primary">复制链接</button
+          <button id="share-copy" type="button" class="primary">
+            复制链接和提取码</button
           ><a id="share-open" target="_blank" rel="noreferrer">打开分享</a>
         </div>
       </div>
@@ -460,6 +521,36 @@
         <h3>分享记录</h3>
         <ul id="share-record-list" class="share-record-list"></ul>
       </section>
+    </dialog>
+    <dialog
+      id="admin-share-editor"
+      class="sheet small-dialog"
+      aria-labelledby="admin-share-editor-title"
+    >
+      <header class="dialog-head">
+        <h2 id="admin-share-editor-title">修改提取码</h2>
+        <button id="admin-share-close" type="button">关闭</button>
+      </header>
+      <p id="admin-share-file" class="item-name"></p>
+      <form id="admin-share-form">
+        <div class="share-code-field">
+          <label for="admin-share-code">提取码</label>
+          <input
+            id="admin-share-code"
+            type="text"
+            required
+            pattern="[A-Za-z0-9]{4}"
+            minlength="4"
+            maxlength="4"
+            autocomplete="off"
+          />
+        </div>
+        <p id="admin-share-hint" class="form-meta"></p>
+        <p id="admin-share-edit-status" class="status" role="status"></p>
+        <div class="row-ops">
+          <button class="primary" type="submit">保存提取码</button>
+        </div>
+      </form>
     </dialog>
     <noscript>启用 JavaScript 后即可使用 Drive。</noscript>
   </body>

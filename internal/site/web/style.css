@@ -736,6 +736,35 @@ dialog::backdrop {
   margin-right: 0.45rem;
   font-weight: 650;
 }
+.share-code-field {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.4rem;
+}
+.share-code-field label {
+  font-weight: 650;
+}
+#share-code,
+#admin-share-code {
+  width: 7rem;
+  min-height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  background: var(--paper);
+  color: var(--ink);
+  letter-spacing: 0.18em;
+}
+.share-code-value {
+  font-family: ui-monospace, monospace;
+}
+.admin-share-table {
+  min-width: 660px;
+}
+.admin-share-table td:first-child {
+  min-width: 9rem;
+  overflow-wrap: anywhere;
+}
 .share-record-list {
   list-style: none;
   padding: 0;

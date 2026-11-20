@@ -115,8 +115,10 @@ func (s *Store) Authenticate(ctx context.Context, login, password string) (strin
 		return "", Invalid
 	}
 	var account string
+	var storedLogin string
 	var hash []byte
-	err := s.db.QueryRow(ctx, `SELECT id,password_hash FROM drive_accounts WHERE login=$1 AND enabled`, login).Scan(&account, &hash)
+	err := s.db.QueryRow(ctx, `SELECT id,login,password_hash FROM drive_accounts
+WHERE lower(login)=lower($1) AND substr(login,2)=substr($1,2) AND enabled`, login).Scan(&account, &storedLogin, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		hash = s.dummy
 	}
@@ -129,7 +131,7 @@ func (s *Store) Authenticate(ctx context.Context, login, password string) (strin
 	tag, err := s.db.Exec(ctx, `WITH current_account AS (
  SELECT id FROM drive_accounts WHERE id=$1 AND login=$2 AND password_hash=$3 AND enabled FOR SHARE
 )
-INSERT INTO drive_sessions SELECT $4,id,now()+interval '12 hours' FROM current_account`, account, login, hash, digest[:])
+INSERT INTO drive_sessions SELECT $4,id,now()+interval '12 hours' FROM current_account`, account, storedLogin, hash, digest[:])
 	if err != nil {
 		return "", err
 	}
