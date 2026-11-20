@@ -74,12 +74,34 @@ func (s *Site) listShares(w http.ResponseWriter, r *http.Request, a store.Accoun
 		problem(w, 400, "请选择文件")
 		return
 	}
-	shares, err := s.Store.Shares(r.Context(), a.ID, file)
+	shares, err := s.Store.Shares(r.Context(), a.ID, file, 100, 0)
 	if err != nil {
 		problem(w, 503, "分享记录暂不可用")
 		return
 	}
 	respond(w, 200, shares)
+}
+
+func (s *Site) myShares(w http.ResponseWriter, r *http.Request, a store.Account) {
+	const pageSize = 50
+	start, err := offset(r.URL.Query().Get("offset"))
+	if err != nil {
+		problem(w, 400, "页码无效")
+		return
+	}
+	shares, err := s.Store.Shares(r.Context(), a.ID, "", pageSize+1, start)
+	if err != nil {
+		problem(w, 503, "分享记录暂不可用")
+		return
+	}
+	more := len(shares) > pageSize
+	if more {
+		shares = shares[:pageSize]
+	}
+	respond(w, 200, struct {
+		Items []store.Share `json:"items"`
+		More  bool          `json:"more"`
+	}{shares, more})
 }
 
 func (s *Site) revokeShare(w http.ResponseWriter, r *http.Request, a store.Account) {

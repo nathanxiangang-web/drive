@@ -33,10 +33,10 @@ func TestUserManagementPreservesCloudOwnership(t *testing.T) {
 	}
 	oldLogin := "fixture" + Random()[:8]
 	newLogin := oldLogin + "new"
-	if err := db.CreateUser(ctx, admin.ID, oldLogin, "fixture-password-only", Member); err != nil {
+	if err := db.CreateUser(ctx, admin.ID, oldLogin, "Mix4!X", Member); err != nil {
 		t.Fatal(err)
 	}
-	token, err := db.Authenticate(ctx, oldLogin, "fixture-password-only")
+	token, err := db.Authenticate(ctx, oldLogin, "Mix4!X")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestUserManagementPreservesCloudOwnership(t *testing.T) {
 	if _, err := db.Account(ctx, token); err == nil {
 		t.Fatal("stale session accepted")
 	}
-	if _, err := db.Authenticate(ctx, newLogin, "fixture-password-only"); err == nil {
+	if _, err := db.Authenticate(ctx, newLogin, "Mix4!X"); err == nil {
 		t.Fatal("old password accepted")
 	}
 	token, err = db.Authenticate(ctx, newLogin, "Mix6!X")

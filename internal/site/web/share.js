@@ -1,6 +1,7 @@
 "use strict";
 
 const shareDialog = el("share-dialog");
+const ownSharePageSize = 50;
 let sharing = null;
 
 function shareLink(token) {
@@ -25,15 +26,21 @@ async function presetShareCode() {
 }
 
 function showShare(item, records = false) {
-  const query = Object.fromEntries(
-    new URL(fileURL(item), location.origin).searchParams,
-  );
-  sharing = { item, query };
-  el("share-name").textContent = item.name;
-  const parent = visibleParts(item.dir ?? state.directory).join(" / ");
-  el("share-location").textContent = [titles[state.view], parent]
-    .filter(Boolean)
-    .join(" / ");
+  const query =
+    item &&
+    Object.fromEntries(new URL(fileURL(item), location.origin).searchParams);
+  sharing = { item, query, offset: 0, listTicket: 0 };
+  el("share-heading").textContent = item ? "分享文件" : "我的分享";
+  el("share-name").hidden = el("share-location").hidden = !item;
+  el("share-name").textContent = item?.name || "";
+  const parent = item
+    ? visibleParts(item.dir ?? state.directory).join(" / ")
+    : "";
+  el("share-location").textContent = item
+    ? [titles[state.view], parent].filter(Boolean).join(" / ")
+    : "";
+  el("share-record-heading").hidden = !item;
+  el("share-pages").hidden = true;
   el("share-status").textContent = "";
   el("share-result").hidden = true;
   el("share-setup").hidden = records;
@@ -64,22 +71,46 @@ async function copyShare(url, code, button) {
 async function loadShareRecords() {
   const current = sharing;
   if (!current) return;
+  const ticket = ++current.listTicket;
   el("share-records").hidden = false;
+  const all = !current.item;
+  const previous = el("share-prev");
+  const next = el("share-next");
+  if (all) {
+    previous.disabled = next.disabled = true;
+    el("share-record-list").replaceChildren();
+    el("share-status").textContent = "正在读取分享…";
+  }
   try {
-    const records = await request(
-      "/api/shares?" + new URLSearchParams({ file: current.item.id }),
-    );
-    if (sharing !== current) return;
-    const rows = records.map((record) => {
+    const page = all
+      ? await request(
+          "/api/shares/mine?" + new URLSearchParams({ offset: current.offset }),
+        )
+      : {
+          items: await request(
+            "/api/shares?" + new URLSearchParams({ file: current.item.id }),
+          ),
+        };
+    if (sharing !== current || ticket !== current.listTicket) return;
+    if (all) {
+      previous.disabled = current.offset === 0;
+      next.disabled = !page.more;
+      el("share-pages").hidden = !page.more && !current.offset;
+      el("share-page").textContent =
+        "第 " + (current.offset / ownSharePageSize + 1) + " 页";
+      el("share-status").textContent = "";
+    }
+    const rows = page.items.map((record) => {
       const row = document.createElement("li");
       const text = document.createElement("span");
       const link = document.createElement("a");
       const live = !record.revoked && new Date(record.expires) > new Date();
-      text.textContent = record.revoked
+      const label = record.revoked
         ? "已撤销"
         : live
           ? "有效至 " + timestamp(record.expires)
           : "已到期";
+      text.textContent = all ? record.name + " · " + label : label;
       row.append(text);
       if (live) {
         if (record.code) text.textContent += " · 提取码 " + record.code;
@@ -105,11 +136,13 @@ async function loadShareRecords() {
                 method: "DELETE",
               });
               if (sharing !== current) return;
-              el("share-status").textContent = "分享已撤销";
               el("share-result").hidden = true;
               await loadShareRecords();
+              if (sharing === current)
+                el("share-status").textContent = "分享已撤销";
             } catch (error) {
-              el("share-status").textContent = error.message;
+              if (sharing === current)
+                el("share-status").textContent = error.message;
             }
           }),
         );
@@ -167,6 +200,20 @@ el("share-copy").addEventListener("click", () =>
   ),
 );
 el("share-randomize").addEventListener("click", presetShareCode);
+el("nav-shares").addEventListener("click", () => {
+  el("account-menu").open = false;
+  showShare(null, true);
+});
+for (const [id, step] of [
+  ["share-prev", -1],
+  ["share-next", 1],
+]) {
+  el(id).addEventListener("click", () => {
+    if (!sharing || sharing.item) return;
+    sharing.offset += step * ownSharePageSize;
+    loadShareRecords();
+  });
+}
 el("share-close").addEventListener("click", () => shareDialog.close());
 el("share-cancel").addEventListener("click", () => shareDialog.close());
 shareDialog.addEventListener("close", () => {

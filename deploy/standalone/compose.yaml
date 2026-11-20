@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: drive
+      POSTGRES_USER: drive
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres-password
+    secrets: [postgres-password]
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -h, 127.0.0.1, -U, drive, -d, drive]
+      interval: 4s
+      timeout: 3s
+      retries: 20
+  drive:
+    image: ${DRIVE_IMAGE:-ghcr.io/nathanxiangang-web/drive:1.0.0}
+    restart: unless-stopped
+    user: "${DRIVE_UID:-10002}:${DRIVE_GID:-10002}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DRIVE_ORIGIN: ${DRIVE_ORIGIN:?Run prepare.sh first}
+      DRIVE_OPENLIST_BASE: ${DRIVE_OPENLIST_BASE:?Run prepare.sh first}
+      DRIVE_BOOTSTRAP_FILE: /run/drive/admin-password
+      DRIVE_PUBLIC_ROOT: ${DRIVE_PUBLIC_ROOT:-/CloudSite}
+      DRIVE_PRIVATE_FOLDER: ${DRIVE_PRIVATE_FOLDER:-DriveSpace}
+      DRIVE_CDN_HOSTS: ${DRIVE_CDN_HOSTS:-cdnfhnfile.115cdn.net}
+      DRIVE_REGISTER: ${DRIVE_REGISTER:-true}
+    ports:
+      - "${DRIVE_BIND:-127.0.0.1:8098}:8098"
+    volumes:
+      - ./private:/run/drive:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8098/healthz]
+      interval: 4s
+      timeout: 3s
+      retries: 20
+volumes:
+  postgres-data:
+secrets:
+  postgres-password:
+    file: ./private/postgres-password

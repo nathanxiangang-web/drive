@@ -62,8 +62,9 @@ func TestAdminAndReaderPermissions(t *testing.T) {
 	call("GET", "/api/admin/users", cookies[0].Value, "", 403)
 	call("GET", "/api/admin/shares", cookies[0].Value, "", 403)
 
-	call("POST", "/api/admin/users", adminToken, `{"login":"fixture-reader","password":"fixture-password-only","role":"reader"}`, 204)
-	readerToken, err := db.Authenticate(ctx, "fixture-reader", pass)
+	call("POST", "/api/admin/users", adminToken, `{"login":"fixture-reader","password":"123456","role":"reader"}`, 400)
+	call("POST", "/api/admin/users", adminToken, `{"login":"fixture-reader","password":"Mix6!X","role":"reader"}`, 204)
+	readerToken, err := db.Authenticate(ctx, "fixture-reader", "Mix6!X")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,6 +100,14 @@ func TestAdminAndReaderPermissions(t *testing.T) {
 		Parent: "42", FileID: "100", Name: "private-fixture.mp4", Code: "ab12"}, 7)
 	if err != nil {
 		t.Fatal(err)
+	}
+	mine := call("GET", "/api/shares/mine", cookies[0].Value, "", 200)
+	if !strings.Contains(mine.Body.String(), share.Token) {
+		t.Fatal("owner list does not include the newly created link")
+	}
+	other := call("GET", "/api/shares/mine", adminToken, "", 200)
+	if strings.Contains(other.Body.String(), share.Token) {
+		t.Fatal("my shares exposed another account's link")
 	}
 	list := call("GET", "/api/admin/shares?q=private-fixture", adminToken, "", 200)
 	if !strings.Contains(list.Body.String(), `"code":"AB12"`) {

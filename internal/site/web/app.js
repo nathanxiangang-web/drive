@@ -45,15 +45,24 @@ const videoTypes = new Set(["mp4", "webm", "mkv", "mov", "m4v", "avi"]);
 const audioTypes = new Set(["mp3", "m4a", "aac", "flac", "ogg", "wav"]);
 
 async function request(url, options = {}) {
-  const response = await fetch(url, {
-    cache: "no-store",
-    credentials: "same-origin",
-    ...options,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      cache: "no-store",
+      credentials: "same-origin",
+      ...options,
+    });
+  } catch {
+    throw new Error("无法连接网站，请检查网络后重试");
+  }
   if (response.status === 204) return null;
-  const data = await response.json();
-  if (!response.ok) {
-    const error = new Error(data.error || "请求失败");
+  const data = await response.json().catch(() => null);
+  if (!response.ok || data === null) {
+    const message =
+      response.status >= 500
+        ? "网站暂时不可用，请稍后重试"
+        : "暂时无法读取网站响应，请重试";
+    const error = new Error(data?.error || message);
     error.status = response.status;
     throw error;
   }
@@ -112,6 +121,7 @@ function resetPage() {
   state.next = 0;
 }
 function showLogin() {
+  el("app-start").hidden = true;
   state.request++;
   closePlayer();
   for (const dialog of document.querySelectorAll("dialog[open]"))
@@ -147,6 +157,7 @@ function showLogin() {
   state.pending = null;
 }
 function showWorkspace(account) {
+  el("app-start").hidden = true;
   el("account").textContent = account.login;
   el("avatar").textContent = account.login.slice(0, 1).toUpperCase();
   state.downloads = account.downloads === true;
@@ -467,7 +478,6 @@ function taskStatus(job) {
 async function clearTaskRecords(endpoint) {
   try {
     await request(endpoint, { method: "DELETE" });
-    state.pending = null;
     if (state.view !== "tasks") return;
     el("task-status").textContent = "已清除显示记录";
     await loadTasks();
@@ -772,9 +782,14 @@ el("task-form").addEventListener("submit", async (event) => {
   }
 });
 el("refresh-tasks").addEventListener("click", loadTasks);
-el("clear-tasks").addEventListener("click", () =>
-  clearTaskRecords("/api/tasks"),
-);
+el("clear-tasks").addEventListener("click", () => {
+  if (
+    window.confirm(
+      "清空任务记录？已提交的下载会继续，文件仍保存在「我的空间」。",
+    )
+  )
+    clearTaskRecords("/api/tasks");
+});
 el("player-close").addEventListener("click", closePlayer);
 el("player").addEventListener("cancel", (event) => {
   event.preventDefault();
@@ -814,7 +829,27 @@ setInterval(() => {
   )
     loadTasks();
 }, 20000);
-request("/api/session").then(showWorkspace).catch(showLogin);
+async function openWorkspace() {
+  const retry = el("start-retry");
+  const message = el("start-message");
+  retry.hidden = true;
+  message.textContent = "正在连接网站…";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    showWorkspace(await request("/api/session", { signal: controller.signal }));
+  } catch (error) {
+    if (error.status === 401) showLogin();
+    else {
+      message.textContent = error.message;
+      retry.hidden = false;
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+el("start-retry").addEventListener("click", openWorkspace);
+openWorkspace();
 
 el("show-register").addEventListener("click", () => {
   el("login-form").hidden = true;

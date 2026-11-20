@@ -781,6 +781,8 @@ dialog::backdrop {
 .share-record-list li > span {
   flex: 1;
   font-size: 0.85rem;
+  min-width: min(10rem, 100%);
+  overflow-wrap: anywhere;
 }
 .toggle-password {
   justify-self: end;

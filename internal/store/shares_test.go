@@ -41,7 +41,7 @@ func TestShareOwnershipAndLifetime(t *testing.T) {
 		result.Code != "" || result.CodeVersion != 1 || len(result.Token) != 16 {
 		t.Fatalf("active share lookup: %+v %v", result, err)
 	}
-	if rows, err := db.Shares(ctx, "other", file.FileID); err != nil || len(rows) != 0 {
+	if rows, err := db.Shares(ctx, "other", file.FileID, 50, 0); err != nil || len(rows) != 0 {
 		t.Fatal("other owner can see a share")
 	}
 	if err := db.RevokeShare(ctx, "other", shared.Token); !errors.Is(err, ShareMissing) {
@@ -169,7 +169,7 @@ VALUES ($1,$2,'public','','42','777','legacy fixture',1024,now()+interval '1 day
 	if err != nil || len(listed) != 1 || listed[0].Token != legacy || listed[0].Code != "B456" {
 		t.Fatal("admin list does not display the original address and current code")
 	}
-	shares, err := db.Shares(ctx, admin.ID, "777")
+	shares, err := db.Shares(ctx, admin.ID, "", 50, 0)
 	if err != nil || len(shares) != 1 || shares[0].Token != legacy {
 		t.Fatal("share history does not display the original address")
 	}

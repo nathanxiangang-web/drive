@@ -21,7 +21,7 @@ var (
 	UserExists     = errors.New("账号已存在")
 	UserMissing    = errors.New("账号不存在")
 	ProtectedAdmin = errors.New("管理员账号受保护")
-	InvalidAccount = errors.New("账号需使用 3–64 个字母、数字或 ._-，密码需为 12–72 字节")
+	InvalidAccount = errors.New("账号格式或权限无效")
 )
 
 func validRole(role string) bool {
@@ -49,6 +49,15 @@ func accountHash(login, password string) ([]byte, error) {
 // ProvisionAdmin upgrades a pre-existing install only when the supplied
 // bootstrap password also authenticates the selected account.
 func (s *Store) ProvisionAdmin(ctx context.Context, login, password string) error {
+	return s.provisionAdmin(ctx, login, password, false)
+}
+
+// BootstrapAdmin initializes empty installations without resetting existing accounts on start.
+func (s *Store) BootstrapAdmin(ctx context.Context, login, password string) error {
+	return s.provisionAdmin(ctx, login, password, true)
+}
+
+func (s *Store) provisionAdmin(ctx context.Context, login, password string, bootstrap bool) error {
 	hash, err := accountHash(login, password)
 	if err != nil {
 		return err
@@ -60,6 +69,13 @@ func (s *Store) ProvisionAdmin(ctx context.Context, login, password string) erro
 	defer tx.Rollback(ctx)
 	if _, err = tx.Exec(ctx, `LOCK TABLE drive_accounts IN SHARE ROW EXCLUSIVE MODE`); err != nil {
 		return err
+	}
+	var ready bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM drive_accounts WHERE role='admin' AND enabled)`).Scan(&ready); err != nil {
+		return err
+	}
+	if bootstrap && ready {
+		return tx.Commit(ctx)
 	}
 	var existing []byte
 	var role string
@@ -74,10 +90,6 @@ func (s *Store) ProvisionAdmin(ctx context.Context, login, password string) erro
 	}
 	if found && role == Admin {
 		return tx.Commit(ctx)
-	}
-	var ready bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM drive_accounts WHERE role='admin' AND enabled)`).Scan(&ready); err != nil {
-		return err
 	}
 	if ready {
 		return Forbidden
@@ -102,10 +114,13 @@ func (s *Store) Users(ctx context.Context, query string) ([]UserDetails, error) 
 }
 
 func (s *Store) CreateUser(ctx context.Context, actor, login, password, role string) error {
-	if !validRole(role) {
+	if !validRole(role) || !loginPattern.MatchString(login) {
 		return InvalidAccount
 	}
-	hash, err := accountHash(login, password)
+	if err := validateRegistrationPassword(password); err != nil {
+		return err
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}

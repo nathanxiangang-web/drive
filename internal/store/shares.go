@@ -63,9 +63,9 @@ RETURNING expires_at`, share.Token, share.Owner, share.Area, share.Dir, share.Pa
 	return share, err
 }
 
-func (s *Store) Shares(ctx context.Context, owner, fileID string) ([]Share, error) {
+func (s *Store) Shares(ctx context.Context, owner, fileID string, limit, offset int) ([]Share, error) {
 	rows, err := s.db.Query(ctx, `SELECT public_token,file_name,file_size,expires_at,revoked_at,access_code FROM drive_shares
-WHERE owner=$1 AND file_id=$2 ORDER BY created_at DESC LIMIT 100`, owner, fileID)
+WHERE owner=$1 AND ($2='' OR file_id=$2) ORDER BY created_at DESC,public_token LIMIT $3 OFFSET $4`, owner, fileID, limit, offset)
 	if err != nil {
 		return nil, err
 	}

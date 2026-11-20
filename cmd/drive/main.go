@@ -98,7 +98,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		if err := db.ProvisionAdmin(init, variable("DRIVE_BOOTSTRAP_LOGIN", "admin"), password); err != nil {
+		if err := db.BootstrapAdmin(init, variable("DRIVE_BOOTSTRAP_LOGIN", "admin"), password); err != nil {
 			return errors.New("bootstrap account provisioning failed")
 		}
 	}

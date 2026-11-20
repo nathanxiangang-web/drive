@@ -121,6 +121,8 @@ func (s *Store) Authenticate(ctx context.Context, login, password string) (strin
 WHERE lower(login)=lower($1) AND substr(login,2)=substr($1,2) AND enabled`, login).Scan(&account, &storedLogin, &hash)
 	if errors.Is(err, pgx.ErrNoRows) {
 		hash = s.dummy
+	} else if err != nil {
+		return "", err
 	}
 	match := bcrypt.CompareHashAndPassword(hash, []byte(password)) == nil
 	if err != nil || !match {

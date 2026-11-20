@@ -6,3 +6,4 @@
 
 /deploy/drive
 **/private/
+/deploy/standalone/.env

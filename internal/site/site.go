@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/nathanxiangang-web/drive/internal/cloud"
 	"github.com/nathanxiangang-web/drive/internal/download"
 	"github.com/nathanxiangang-web/drive/internal/store"
@@ -67,6 +68,7 @@ func (s *Site) Routes() http.Handler {
 	mux.HandleFunc("GET /api/file", s.auth(s.file))
 	mux.HandleFunc("POST /api/shares", s.auth(s.createShare))
 	mux.HandleFunc("GET /api/shares", s.auth(s.listShares))
+	mux.HandleFunc("GET /api/shares/mine", s.auth(s.myShares))
 	mux.HandleFunc("GET /api/shares/code", s.auth(s.newShareCode))
 	mux.HandleFunc("DELETE /api/shares/{token}", s.auth(s.revokeShare))
 	mux.HandleFunc("GET /api/tasks", s.auth(s.tasks))
@@ -141,8 +143,12 @@ func (s *Site) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token, err := s.Store.Authenticate(r.Context(), strings.TrimSpace(input.Login), input.Password)
-	if err != nil {
+	if errors.Is(err, store.Invalid) {
 		problem(w, 401, "账号或密码无效")
+		return
+	}
+	if err != nil {
+		problem(w, 503, "暂时无法登录，请稍后重试")
 		return
 	}
 	sessionCookie(w, token)
@@ -172,8 +178,12 @@ func (s *Site) auth(handler func(http.ResponseWriter, *http.Request, store.Accou
 			return
 		}
 		account, err := s.Store.Account(r.Context(), cookie.Value)
-		if err != nil {
+		if errors.Is(err, store.Invalid) || errors.Is(err, pgx.ErrNoRows) {
 			problem(w, 401, "请登录")
+			return
+		}
+		if err != nil {
+			problem(w, 503, "暂时无法读取登录状态，请稍后重试")
 			return
 		}
 		handler(w, r, account)

@@ -11,6 +11,15 @@
     <script src="/admin-shares.js" defer></script>
   </head>
   <body data-registration="__REGISTRATION__">
+    <main id="app-start" class="signin">
+      <div class="login-card">
+        <h1>Drive</h1>
+        <p id="start-message" class="status" role="status">正在连接网站…</p>
+        <button id="start-retry" class="primary" type="button" hidden>
+          重试
+        </button>
+      </div>
+    </main>
     <main id="login" class="signin" hidden>
       <form id="login-form" class="login-card">
         <span class="logo" aria-hidden="true">D</span>
@@ -100,6 +109,7 @@
             <span id="avatar" class="avatar"></span><span id="account"></span>
           </summary>
           <div class="account-actions">
+            <button id="nav-shares" type="button">我的分享</button>
             <button id="nav-admin" type="button" aria-pressed="false" hidden>
               站点管理
             </button>
@@ -298,7 +308,7 @@
                 >新账号<input
                   id="new-user-login"
                   autocomplete="off"
-                  minlength="3"
+                  pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}"
                   maxlength="64"
                   required
               /></label>
@@ -307,8 +317,9 @@
                   id="new-user-password"
                   type="password"
                   autocomplete="new-password"
-                  minlength="12"
+                  minlength="6"
                   maxlength="72"
+                  title="至少 6 位，须同时包含英文字母和数字"
                   required
               /></label>
               <label
@@ -518,8 +529,13 @@
         </div>
       </div>
       <section id="share-records" hidden>
-        <h3>分享记录</h3>
+        <h3 id="share-record-heading">分享记录</h3>
         <ul id="share-record-list" class="share-record-list"></ul>
+        <div id="share-pages" class="pagination" hidden>
+          <button id="share-prev" type="button">上一页</button>
+          <span id="share-page">第 1 页</span>
+          <button id="share-next" type="button">下一页</button>
+        </div>
       </section>
     </dialog>
     <dialog
