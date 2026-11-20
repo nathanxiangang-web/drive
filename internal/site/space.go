@@ -22,9 +22,11 @@ func isTaskFolder(item cloud.Item) bool {
 
 type entry struct {
 	cloud.Item
-	Dir    string `json:"dir"`
-	Offset int    `json:"offset"`
-	Ref    string `json:"ref,omitempty"`
+	Dir     string `json:"dir"`
+	Offset  int    `json:"offset"`
+	Ref     string `json:"ref,omitempty"`
+	PlayRef string `json:"play_ref,omitempty"`
+	parent  string
 }
 
 type entryPage struct {
@@ -115,7 +117,7 @@ func (s *Site) makePage(area, relative string, page cloud.Page) entryPage {
 	result := entryPage{Items: []entry{}, Next: page.Next}
 	for _, item := range page.Items {
 		if s.visible(area, relative, item) {
-			result.Items = append(result.Items, entry{Item: item, Dir: relative, Offset: page.Offset})
+			result.Items = append(result.Items, entry{Item: item, Dir: relative, Offset: page.Offset, parent: page.CID})
 		}
 	}
 	return result

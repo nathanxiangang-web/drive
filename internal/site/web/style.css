@@ -262,6 +262,23 @@ video {
   background: #172326;
   display: block;
 }
+.player-media {
+  position: relative;
+}
+.player-media:has(video[hidden]) {
+  display: none;
+}
+.player-status {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: white;
+  margin: 0;
+  padding: 1rem 1rem 2rem;
+  pointer-events: none;
+}
 .status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 175px), 1fr));
